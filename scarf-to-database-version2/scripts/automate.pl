@@ -59,7 +59,7 @@ sub packages
     my @contents = readdir($dir);
     open(my $fh, '>', "packages-names.txt") or die "Could not open file packages-names.txt $!";
     foreach my $dirName(@contents){
-        if ($dirName =~ /^.*?---justparse$/)  {
+        if ($dirName =~ /^.*?parse$/)  {
             my @tool = split(/---/, $dirName);
             print $fh "$dirName\n";
             $toolNames{$tool[2]} = $tool[2];
