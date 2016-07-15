@@ -654,9 +654,8 @@ sub openDatabase
 	my $client;
         my $dbh;
 	if (defined $user and defined $pass) {
-	    
-	    $client = MongoDB::MongoClient->new(host => $host, port => $port);
-	    $client->authenticate("$name", "$user", "$pass");
+	   
+	    String url = "mongodb://$user:$pass@" . $host . ":$port/$name";
 	    $dbh = $client->get_database("$name");
 	        
 	} else  {
