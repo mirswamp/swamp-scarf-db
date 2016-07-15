@@ -655,13 +655,8 @@ sub openDatabase
         my $dbh;
 	if (defined $user and defined $pass) {
 	    
-	    if ($host eq 'localhost') {
-		$client = MongoDB::MongoClient->new(host => $host, port => $port
-		    , username => $user, password => $pass);
-	    } else {
-	        $client = MongoDB::MongoClient->new(host => $host, port => $port);
-	        $client->authenticate("$name", "$user", "$pass");
-	    }
+	    $client = MongoDB::MongoClient->new(host => $host, port => $port);
+	    $client->authenticate("$name", "$user", "$pass");
 	    $dbh = $client->get_database("$name");
 	        
 	} else  {
