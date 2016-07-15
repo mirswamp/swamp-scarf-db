@@ -23,10 +23,10 @@ use Switch;
 use DBI;
 use DBD::Pg;
 use MongoDB;
-use ScarfToHash;
-use boolean;
 use FindBin;
 use lib $FindBin::Bin;
+use ScarfToHash;
+use boolean;
 
 ############################################## Main ######################################################
 
@@ -50,11 +50,9 @@ sub main
 	    
 	    # creating the database and tables depending upon the commandline arguments
 	    if ($database eq 'postgres' || $database eq 'mariadb' || $database eq 'mysql')  {
-	        if  ($create == 1 )  {
-		    openDatabase($name, $database);
-		    create_tables($name, $database, @tableNames);
-		}  elsif  ($table == 1)  {
-		    create_tables($name, $database, @tableNames);
+		if  ($table == 1)  {
+		    create_tables($name, $database, $options{'db-host'}, $options{'db-port'}, 
+				    $options{'db-username'}, $options{'db-password'}, @tableNames);
 		}
 	    }
 
@@ -93,7 +91,6 @@ sub parseCmdArgs
     my %options = (
         'help'          => 0,
         'version'       => 0,
-        'create'        => 0,
         'table'         => 0,
         'scarf'		=> undef,
         'db-name'       => undef,
@@ -110,7 +107,6 @@ sub parseCmdArgs
     my @options = (
         "help|h!",
         "version|v!",
-        "create|c!",
         "table|t!",
         "scarf|s|i=s",
         "db-type|D|j=s",
@@ -120,7 +116,7 @@ sub parseCmdArgs
         "db-host|H|n=s",
         "db-port|a|o=s",
         "db-username|u|y=s",
-        "db-password|q|b=s",
+        "db-password|U|b=s",
         "db-name|N|g=s",
         );
 
@@ -182,14 +178,17 @@ sub printHelp
     options:
     --help                                      -h print this message
     --version                                   -v print version
-    --create                                    -c create database
     --table                                     -t create tables in the given database
-    --dir=<dir-name>                            -d directory name
-    --name=<database-name-to insert-data>       -n database name to insert data
-    --database=<name of the database server>    -D Eg. postgres, mongodb, mysql etc.
-    --pkg=<pkg-name>                            -p name of the package
-    --ver=<pkg-version>       			-V version of the package
-    --plat=<platform-name>    			-P name of the platform
+    --scarf=<scarf name/config file name>       -s scarf file name/config file name
+    --db-name=<database-name-to insert-data>    -N database name to insert data
+    --db-type=<name of the database server>     -D Eg. postgres, mongodb, mysql, mariadb
+    --pkg-name=<pkg-name>                       -p name of the package
+    --pkg-version=<pkg-version>       		-V version of the package
+    --platform=<platform-name>    		-P name of the platform
+    --db-host=<database hostname>      		-H hostname of the database
+    --db-port=<database port>    		-a port number for the database
+    --db-username=<database username>      	-u username for the database
+    --db-password=<database password>  		-U password of the database username
 
 EOF
 }
@@ -487,9 +486,9 @@ sub bug
 	    }
     }
 
-    if ($handlers->{'counter'}->() == 100000)  {
+    if ($handlers->{'counter'} == 100000)  {
 	$handlers->{'handler'}->commit();
-	$handlers->{'counter'} = counter(0);	
+	$handlers->{'counter'} += 1;	
     }
 }
 
@@ -639,11 +638,10 @@ sub openDatabase
 {
     
     my ($name, $type, $host, $port, $user, $pass) = @_;
-
     if (lc($type) eq 'postgres')  {
         print "connected with postgres\n";
 	my $driver   = "Pg";
-        my $dsn = "DBI:$driver:dbname=$name;host=$host;port=$port;";
+        my $dsn = "DBI:$driver:dbname=$name;host=$host;port=$port";
         my $dbh = DBI->connect($dsn, $user, $pass, { RaiseError => 1, AutoCommit => 0, async => 1, fsync => 0 })
                        or die $DBI::errstr;
 
@@ -654,13 +652,22 @@ sub openDatabase
 
         print "connected with mongodb\n";
 	my $client;
-        if (defined $user and defined $pass) {
-	    $client = MongoDB::MongoClient->new(host => $host, port => $port
-					, username => $user, password => $pass); 
+        my $dbh;
+	if (defined $user and defined $pass) {
+	    
+	    if ($host eq 'localhost') {
+		$client = MongoDB::MongoClient->new(host => $host, port => $port
+		    , username => $user, password => $pass);
+	    } else {
+	        $client = MongoDB::MongoClient->new(host => $host, port => $port);
+	        $client->authenticate("$name", "$user", "$pass");
+	    }
+	    $dbh = $client->get_database("$name");
+	        
 	} else  {
 	    $client = MongoDB::MongoClient->new(host => $host, port => $port);
+	    $dbh = $client->get_database("$name");
 	}
-	my $dbh = $client->get_database("$name");
 
 	# Returning the database handle
 	return $dbh;
@@ -669,7 +676,7 @@ sub openDatabase
     
 	my $driver = "mysql";
 	my $database = $_[0];
-	my $dsn = "DBI:$driver:database=$name;host=$host;port=$port;";
+	my $dsn = "DBI:$driver:database=$name;host=$host;port=$port";
 	
 	if (lc($type) eq 'mysql')  {
 	    print "connected with mysql\n";
@@ -691,14 +698,14 @@ sub create_tables
 {
 
     # Required private variable for the subroutine
-    my ($db_name , $type, @table_names) = @_;
-    my $dbh = openDatabase($db_name, $type);
+    my ($name , $database, $host, $port, $user, $pass, @table_names) = @_;
+    my $dbh = openDatabase($name, $database, $host, $port, $user, $pass);
     my $counter = 0;
     my $create;
     my $check;
     my $primaryKey = "BIGSERIAL PRIMARY KEY";
 
-    if (lc($type) eq 'mariadb' || lc($type) eq 'mysql')  {
+    if (lc($database) eq 'mariadb' || lc($database) eq 'mysql')  {
 	$primaryKey = "INT PRIMARY KEY AUTO_INCREMENT";
     }
     
