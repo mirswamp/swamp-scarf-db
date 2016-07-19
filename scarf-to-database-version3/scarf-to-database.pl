@@ -521,7 +521,7 @@ sub bug
     $handlers->{'count'}++;
     if ($handlers->{'count'} == 100000)  {
 	$handlers->{'handler'}->commit();
-	$handlers->{'count'} += 1;	
+	$handlers->{'count'} = 0;	
     }
 }
 
@@ -566,6 +566,8 @@ sub metricMongo
 			);
 
     push @{$handlers->{'scarf'}}, \%metricInstance;
+    
+    $handlers->{'count'}++;
 
     if ($handlers->{'count'} == 1000) {
 	my $res = $handlers->{'assess'}->insert_many(\@{$handlers->{'scarf'}});
@@ -671,6 +673,8 @@ sub bugMongo
 			);
     
     push @{$handlers->{'scarf'}}, \%bugInstance;
+    
+    $handlers->{'count'}++;
 
     if ($handlers->{'count'} == 1000) {
 	my $res = $handlers->{'assess'}->insert_many(\@{$handlers->{'scarf'}});
