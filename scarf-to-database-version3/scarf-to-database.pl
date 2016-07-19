@@ -19,7 +19,6 @@
 use strict;
 use 5.010;
 use Getopt::Long;
-use Switch;
 use DBI;
 use DBD::Pg;
 use MongoDB;
@@ -32,7 +31,7 @@ use boolean;
 
 sub main
 {
-    my %options = parseCmdArgs();
+    my %options = ProcessOptions();
     defaults(\%options);
     print "------------------Started--------------------\n";
     my ($sec,$min,$hour) = localtime(time);
@@ -73,8 +72,8 @@ sub main
     } elsif ($options{'scarf'} =~ /^.*.xml$/) {
         # Parsing the files
 	parse_files($options{'scarf'}, $name, $pkg_name, $pkg_ver, $plat, $database,
-		    $options{'db-host'}, $options{'db-port'}, $options{'db-username'}, 
-		    $options{'db-password'}); 
+		$options{'db-host'}, $options{'db-port'}, $options{'db-username'}, 
+		$options{'db-password'}); 
     }
     
     print "Start Time: $hour:$min:$sec\n";
@@ -85,67 +84,92 @@ sub main
     print "------------------Finished--------------------\n";
 }
 
-########## sub-routine to parse the command line options and to find the type of bug file ##################
-sub parseCmdArgs
+###################################### Process command line options #######################################
+sub ProcessOptions
 {
-    my %options = (
-        'help'          => 0,
-        'version'       => 0,
-        'table'         => 0,
-        'scarf'		=> undef,
-        'db-name'       => undef,
-        'db-type'       => undef,
-	'pkg-name'	=> undef,
-	'pkg-version' 	=> undef,
-	'platform'      => undef,
-	'db-host'	=> undef,
-	'db-port'	=> undef,
-	'db-password'	=> undef,
-	'db-username'	=> undef
+    my %optionDefaults = (
+	help            => 0,
+	version         => 0,
+	authenticate   	=> undef,
+	db_params	=> undef,
+	);
+
+    # for options that contain a '-', make the first value be the
+    # same string with '-' changed to '_', so quoting is not required
+    # to access the key in the hash $option{input_file} instead of
+    # $option{'input-file'}
+    
+    my @options = (
+	"help|h!",
+	"version|v!",
+	"authenticate|conf_file|a1|a=s",
+	"db_params|conf_file2|c1|c=s",
     );
 
-    my @options = (
-        "help|h!",
-        "version|v!",
-        "table|t!",
-        "scarf|s|i=s",
-        "db-type|D|j=s",
-        "pkg-name|p|k=s",
-        "pkg-version|V|l=s",
-        "platform|P|m=s",
-        "db-host|H|n=s",
-        "db-port|a|o=s",
-        "db-username|u|y=s",
-        "db-password|U|b=s",
-        "db-name|N|g=s",
-        );
-
-    Getopt::Long::Configure(qw/require_order no_ignore_case no_auto_abbrev/);
-    my $ok = GetOptions(\%options, @options);
-
-    if (!$ok) {
-	die "Please enter valid options\n";
-    }
     
-    # To display the help menu and exit the script
-    if ($options{help} == 1)  {
-        printHelp();
-        exit 0;
+    Getopt::Long::Configure(qw/require_order no_ignore_case no_auto_abbrev/);
+    my %getoptOptions;
+    my $ok = GetOptions(\%getoptOptions, @options);
+
+    # Checking whether appropriate command line options were given
+    my @confFileOptions;
+
+    (defined $getoptOptions{db_params} and push @confFileOptions, 'db_params')
+	    or die "No database parameters file provided\n";
+    defined $getoptOptions{authenticate} and push @confFileOptions, 'authenticate'; 
+    
+    my %options = %optionDefaults;
+    my %optSet;
+
+    while (my ($k, $v) = each %getoptOptions)  {
+	$options{$k} = $v;
+        $optSet{$k} = 1;
     }
 
-    if ($options{version} == 1)  {
-        printVersion();
-        exit 0;
+    my @errs;
+
+    if ($ok)  {
+        foreach my $opt (@confFileOptions)  {
+            if (exists $options{$opt})  {
+		my $fn = $options{$opt};
+		if ($optSet{$opt} || -e $fn)  {
+		    if (-f $fn)  {
+			my $h = ReadConfFile($fn, undef, \@options);
+			while (my ($k, $v) = each %$h)  {
+			    next if $k =~ /^#/;
+			    $options{$k} = $v;
+			    $optSet{$k} = 1;
+			}			
+		    }  else  {
+			push @errs, "option '$opt' option file '$fn' not found";
+		    }
+		}
+	    }
+	}
+	while (my ($k, $v) = each %getoptOptions)  {
+	    $options{$k} = $v;
+	    $optSet{$k} = 1;
+	}
     }
 
-    # Checking whether appropriate command line arguments are provided
-    defined $options{'db-name'} or die 'No database name provided';
-    defined $options{'pkg-name'} or die 'No pkg name provided';
-    defined $options{'pkg-version'} or die 'No pkg version provided';
-    defined $options{'platform'} or die 'No platform name provided';
-    defined $options{'scarf'} or die 'Provide either scarf-file or results-conf argument';
+    if (!$ok || $options{help})  {
+	printHelp(\%optionDefaults);
+	exit !$ok;
+    }
 
-    return %options;
+    if ($ok && $options{version})  {
+	printVersion();
+	exit 0;
+    }
+
+    # Checking whether appropriate options were present in the configuration files
+    defined $options{'db-name'} or die 'No database name provided in config file';
+    defined $options{'pkg-name'} or die 'No pkg name provided in config file';
+    defined $options{'pkg-version'} or die 'No pkg version provided in config file';
+    defined $options{'platform'} or die 'No platform name provided in config file';
+    defined $options{'scarf'} or die 'Provide either scarf-file or results-conf argument in config file';
+
+    return %options
 }
 
 ################################# Subroutine to set default values #########################################
@@ -178,17 +202,9 @@ sub printHelp
     options:
     --help                                      -h print this message
     --version                                   -v print version
-    --table                                     -t create tables in the given database
-    --scarf=<scarf name/config file name>       -s scarf file name/config file name
-    --db-name=<database-name-to insert-data>    -N database name to insert data
-    --db-type=<name of the database server>     -D Eg. postgres, mongodb, mysql, mariadb
-    --pkg-name=<pkg-name>                       -p name of the package
-    --pkg-version=<pkg-version>       		-V version of the package
-    --platform=<platform-name>    		-P name of the platform
-    --db-host=<database hostname>      		-H hostname of the database
-    --db-port=<database port>    		-a port number for the database
-    --db-username=<database username>      	-u username for the database
-    --db-password=<database password>  		-U password of the database username
+    --authenticate=<conf file>		      	-a conf file containing the username 
+						    and password for database
+    --db_params=<database params>  		-c conf file containing the database parameters
 
 EOF
 }
@@ -197,7 +213,7 @@ EOF
 #################################### Print version of the program #################################
 sub printVersion
 {
-    my $version = '0.8.0 (July 14, 2016)';
+    my $version = '0.9.0 (July 19, 2016)';
     my $progname = $0;
     print "$progname version $version\n";
 }
@@ -213,9 +229,12 @@ sub findScarf
     my $tarDir = $conf->{"parsed-results-dir"};
     my $file = $conf->{"parsed-results-file"};
 
-    defined $tarDir or (print "$confFile is not appropriate. Can't find the name of directory\n" and return 2);
-    defined $archive or (print "$confFile is not appropriate. Can't find the name of archive\n" and return 2);
-    defined $file or (print "$confFile is not appropriate. Can't find the name of file\n" and return 2);
+    defined $tarDir 
+	or (print "$confFile is not appropriate. Can't find the name of directory\n" and return 2);
+    defined $archive 
+	or (print "$confFile is not appropriate. Can't find the name of archive\n" and return 2);
+    defined $file 
+	or (print "$confFile is not appropriate. Can't find the name of file\n" and return 2);
    
     my @dir = split("/", $confFile);
     pop @dir;
@@ -228,7 +247,8 @@ sub findScarf
         
     # Extracting the scarf from the given tar file
     system("tar -xzf $dirName/$archive $tarDir/$file") and 
-    print "tar -xzf $dirName/$archive $tarDir/$file --verbose\n" and print "Could not untar the file\n" and return 3;
+    print "tar -xzf $dirName/$archive $tarDir/$file --verbose\n" 
+	and print "Could not untar the file\n" and return 3;
     
     return (1, $tarDir, $file);
 }
@@ -239,7 +259,6 @@ sub parse_files
 
     # required private variables for the subroutine 
     my $id;
-    my $count = 0;
     my %handlers;
     my $dbHandlers;
 
@@ -249,7 +268,7 @@ sub parse_files
     $handlers{'pkgName'} = $pkg_name;
     $handlers{'pkgVer'} = $pkg_ver;
     $handlers{'plat'} = $plat;
-    $handlers{'count'} = $count;
+    $handlers{'count'} = 0;
     $handlers{'name'} = $database;
 
     my $dbh = openDatabase($name, $database, $host, $port, $user, $pass);
@@ -257,12 +276,16 @@ sub parse_files
     
 
     if ($database eq 'postgres' || $database eq 'mysql' || $database eq 'mariadb')  {
-	$handlers{'weakness'} = $dbh->prepare("INSERT INTO weaknesses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"); 
-	$handlers{'locations'} = $dbh->prepare("INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"); 
-	$handlers{'methods'} = $dbh->prepare("INSERT INTO methods VALUES (?, ?, ?, ?, ?);");
-	$handlers{'metrics'} = $dbh->prepare("INSERT INTO metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?);");
-	$handlers{'functions'} = $dbh->prepare("INSERT INTO functions VALUES (?, ?, ?, ?, ?, ?);");
-	$handlers{'counter'} = $count;
+	$handlers{'weakness'} = $dbh->prepare("INSERT INTO weaknesses VALUES 
+						(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"); 
+	$handlers{'locations'} = $dbh->prepare("INSERT INTO locations VALUES 
+						(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"); 
+	$handlers{'methods'} = $dbh->prepare("INSERT INTO methods VALUES 
+						(?, ?, ?, ?, ?);");
+	$handlers{'metrics'} = $dbh->prepare("INSERT INTO metrics VALUES 
+						(?, ?, ?, ?, ?, ?, ?, ?);");
+	$handlers{'functions'} = $dbh->prepare("INSERT INTO functions VALUES 
+						(?, ?, ?, ?, ?, ?);");
 
 	my $callbackHash ={};
 
@@ -271,14 +294,15 @@ sub parse_files
 	$callbackHash->{'BugCallback'} = \&bug;
 	$callbackHash->{'databaseHandler'} = \%handlers;
 
-	my $test_reader = new ScarfToHash("$file", $callbackHash);
+	my $test_reader = new ScarfToHash($file, $callbackHash);
 	$test_reader->parse;
 	
+	# Executing the remaining instances 
 	$handlers{'handler'}->commit();
 	$handlers{'handler'}->disconnect();
     
     }  else  {
-	$handlers{'assess'} = $dbh->get_collection("assess")->initialize_ordered_bulk_op;
+	$handlers{'assess'} = $dbh->get_collection("assess");
 	$handlers{'assessId'} = MongoDB::OID->new->to_string;
 	my $callbackHash ={};
 
@@ -287,11 +311,14 @@ sub parse_files
 	$callbackHash->{'BugCallback'} = \&bugMongo;
 	$callbackHash->{'databaseHandler'} = \%handlers;
 
-	my $test_reader = new ScarfToHash("$file", $callbackHash);
-	$test_reader->parse;
-	if ( exists $handlers{'bug'} ) {
-	    $handlers{'assess'}->execute;
-	}  elsif( exists $handlers{'init'} )  {
+	my $test_reader = new ScarfToHash($file, $callbackHash);
+	$test_reader->parse;	
+	
+	# Executing the remaining instances 
+	if ($handlers{'count'} != 0 && exists $handlers{'bug'}) {
+	    my $res = $handlers{'assess'}->insert_many(\@{$handlers{'scarf'}});
+	    delete $handlers{'scarf'};
+	}  elsif ( exists $handlers{'init'} )  {
 	    $handlers{'assess'}->insert({  'assessId'      => $handlers{'assessId'},
 	                                   'assessUuid'    => $handlers{'assessUuid'},
 					   'pkgShortName'  => $handlers{'pkgName'},
@@ -300,7 +327,6 @@ sub parse_files
 					   'toolVersion'   => $handlers{'toolVersion'},
 					   'plat'          => $handlers{'plat'},
 					});
-	    $handlers{'assess'}->execute;
 	}
     }
 }
@@ -317,7 +343,7 @@ sub init
 		    \'$handlers->{'plat'}\', $startTs, $endTs);";
     my $check = $handlers->{'handler'}->do($insert);
     
-    if($check < 0){
+    if ($check < 0)  {
 	die "Unable to insert\n";
     }
     
@@ -347,7 +373,7 @@ sub metric
 		     $metric->{'SourceFile'}, $classname, $method_name, $metric->{'Type'},
 		     $strVal, $metric->{'Value'});
     
-	if($check < 0){
+	if ($check < 0)  {
 	    die "Unable to insert\n";
 	}
     
@@ -357,7 +383,7 @@ sub metric
 		     $metric->{'SourceFile'}, $classname, $method_name, $metric->{'Type'},
 		     $metric->{'Value'}, $strVal);
 	
-	if($check < 0){
+	if ($check < 0)  {
 	    die "Unable to insert\n";
 	}
     }
@@ -365,10 +391,16 @@ sub metric
     my $check = $handlers->{'functions'}->execute($handlers->{'assessId'}, $metric->{'SourceFile'},
 		 $classname, $method_name, $startLine, $endLine);
     
-    if($check < 0){
+    if ($check < 0)  {
 	die "Unable to insert\n";
     }
+    
+    $handlers->{'count'}++;
 
+    if ($handlers->{'count'} == 100000)  {
+	$handlers->{'handler'}->commit();
+	$handlers->{'count'} = 0;	
+    }
 
 }
 
@@ -382,7 +414,7 @@ sub bug
 	foreach my $method (@{$bug->{Methods}}) {    	
 	    my $check = $handlers->{'methods'}->execute($handlers->{'assessId'}, $bug->{'BugId'},
 			$method->{'MethodId'}, $method->{'primary'}, $method->{'name'});
-	    if($check < 0){
+	    if ($check < 0)  {
 		die "Unable to insert\n";
 	    }	
 	}
@@ -391,7 +423,7 @@ sub bug
 	my ($methodId, $primary, $name) = (-1, undef, 'NULL');
 	my $check = $handlers->{'methods'}->execute($handlers->{'assessId'}, $bug->{'BugId'},
 		    $methodId, $primary, $name);
-	if($check < 0){
+	if ($check < 0)  {
 	    die "Unable to insert\n";
 	}	
     }
@@ -429,7 +461,7 @@ sub bug
 			$location->{'LocationId'}, $location->{'primary'}, $location->{'SourceFile'}, 
 			$loc_start_line, $loc_end_line, $loc_start_col, $loc_end_col, $loc_expla);
 	    
-	    if($check < 0){
+	    if ($check < 0)  {
 		die "Unable to insert\n";
 	    }
 	}
@@ -470,7 +502,7 @@ sub bug
 	    my $check = $handlers->{'weakness'}->execute($handlers->{'assessId'}, $bug->{'BugId'},
 			    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{'BugMessage'},
 			    $res_sug, $classname, $cweid);
-	    if($check < 0){
+	    if ($check < 0)  {
 		die "Unable to insert\n";
 	    }
 	}
@@ -481,14 +513,15 @@ sub bug
 	    my $check = $handlers->{'weakness'}->execute($handlers->{'assessId'}, $bug->{'BugId'},
 			    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{'BugMessage'},
 			    $res_sug, $classname, $cweid);
-	    if($check < 0){
+	    if ($check < 0)  {
 		die "Unable to insert\n";
 	    }
     }
-
-    if ($handlers->{'counter'} == 100000)  {
+    
+    $handlers->{'count'}++;
+    if ($handlers->{'count'} == 100000)  {
 	$handlers->{'handler'}->commit();
-	$handlers->{'counter'} += 1;	
+	$handlers->{'count'} += 1;	
     }
 }
 
@@ -516,22 +549,29 @@ sub metricMongo
     if (exists $metric->{'Method'})  {
         $method_name = $metric->{'Method'};
     }
-    my $id = $handlers->{'assess'}->insert 
-    				    ({  'assessId'     	=> $handlers->{'assessId'},
-					'assessUuid'   	=> $handlers->{'assessUuid'},
-					'pkgShortName' 	=> $handlers->{'pkgName'},
-					'pkgVersion'   	=> $handlers->{'pkgVer'},
-					'toolType'     	=> $handlers->{'toolName'},
-					'toolVersion'  	=> $handlers->{'toolVersion'},
-					'plat'         	=> $handlers->{'plat'}, 
-					'Value' 	=> $metric->{'Value'},
-					'Type' 		=> $metric->{'Type'},
-					'Method' 	=> $method_name, 
-					'Class' 	=> $classname,
-					'SourceFile' 	=> $metric->{'SourceFile'},
-					'MetricId' 	=> int($metric->{'MetricId'})
-					});
 
+    my %metricInstance = (  'assessId'     	=> $handlers->{'assessId'},
+			    'assessUuid'   	=> $handlers->{'assessUuid'},
+			    'pkgShortName' 	=> $handlers->{'pkgName'},
+			    'pkgVersion'   	=> $handlers->{'pkgVer'},
+			    'toolType'     	=> $handlers->{'toolName'},
+			    'toolVersion'  	=> $handlers->{'toolVersion'},
+			    'plat'         	=> $handlers->{'plat'}, 
+			    'Value' 		=> $metric->{'Value'},
+			    'Type' 		=> $metric->{'Type'},
+			    'Method' 		=> $method_name, 
+			    'Class' 		=> $classname,
+			    'SourceFile' 	=> $metric->{'SourceFile'},
+			    'MetricId' 		=> int($metric->{'MetricId'})
+			);
+
+    push @{$handlers->{'scarf'}}, \%metricInstance;
+
+    if ($handlers->{'count'} == 1000) {
+	my $res = $handlers->{'assess'}->insert_many(\@{$handlers->{'scarf'}});
+	$handlers->{'count'} = 0;
+	delete $handlers->{'scarf'};
+    }
 }
 
 sub bugMongo
@@ -610,27 +650,33 @@ sub bugMongo
 	}
     }
 
-    my $id = $handlers->{'assess'}->insert 
-    				    ({  'assessId'     	=> $handlers->{'assessId'},
-					'assessUuid'   	=> $handlers->{'assessUuid'},
-					'pkgShortName' 	=> $handlers->{'pkgName'},
-					'pkgVersion'   	=> $handlers->{'pkgVer'},
-					'toolType'     	=> $handlers->{'toolName'},
-					'toolVersion'  	=> $handlers->{'toolVersion'},
-					'plat'         	=> $handlers->{'plat'},
-					'BugMessage'   	=> $bug->{'BugMessage'},
-					'BugGroup'     	=> $bug_group,
-					'Location'     	=> $bug->{'BugLocations'},
-					'Methods'      	=> $bug->{'Methods'},
-					'bugId'         => int($bug->{'BugId'}),
-					'bugCode'          => $bug_code,
-					'bugRank'          => $bug_rank,
-					'bugSeverity'      => $bug_sev,
-					'bugResolutionMsg' => $res_sug,
-					'classname'        => $classname,		
-					'bugCwe'           => $bug->{'CweIds'},
-					});
+    my %bugInstance = ( 'assessId'     	=> $handlers->{'assessId'},
+			'assessUuid'   	=> $handlers->{'assessUuid'},
+			'pkgShortName' 	=> $handlers->{'pkgName'},
+			'pkgVersion'   	=> $handlers->{'pkgVer'},
+			'toolType'     	=> $handlers->{'toolName'},
+			'toolVersion'  	=> $handlers->{'toolVersion'},
+			'plat'         	=> $handlers->{'plat'},
+			'BugMessage'   	=> $bug->{'BugMessage'},
+			'BugGroup'     	=> $bug_group,
+			'Location'     	=> $bug->{'BugLocations'},
+			'Methods'      	=> $bug->{'Methods'},
+			'bugId'         => int($bug->{'BugId'}),
+			'bugCode'          => $bug_code,
+			'bugRank'          => $bug_rank,
+			'bugSeverity'      => $bug_sev,
+			'bugResolutionMsg' => $res_sug,
+			'classname'        => $classname,		
+			'bugCwe'           => $bug->{'CweIds'},
+			);
+    
+    push @{$handlers->{'scarf'}}, \%bugInstance;
 
+    if ($handlers->{'count'} == 1000) {
+	my $res = $handlers->{'assess'}->insert_many(\@{$handlers->{'scarf'}});
+	$handlers->{'count'} = 0;
+	delete $handlers->{'scarf'};
+    }
 }
 
 ########################################## Opening the database #############################################
@@ -639,30 +685,29 @@ sub openDatabase
     
     my ($name, $type, $host, $port, $user, $pass) = @_;
     if (lc($type) eq 'postgres')  {
-        print "connected with postgres\n";
 	my $driver   = "Pg";
         my $dsn = "DBI:$driver:dbname=$name;host=$host;port=$port";
         my $dbh = DBI->connect($dsn, $user, $pass, { RaiseError => 1, AutoCommit => 0, async => 1, fsync => 0 })
                        or die $DBI::errstr;
-
+        print "connected with postgres\n";
+	
 	#Returning the database handle
 	return $dbh;
-    }
-    elsif (lc($type) eq 'mongodb')  {
-
-        print "connected with mongodb\n";
+    }  elsif (lc($type) eq 'mongodb')  {
 	my $client;
         my $dbh;
+	my $url;
 	if (defined $user and defined $pass) {
-	   
-	    String url = "mongodb://$user:$pass@" . $host . ":$port/$name";
-	    $dbh = $client->get_database("$name");
+	    $url = "mongodb://$user:$pass@" . $host . ":$port/$name";
 	        
 	} else  {
-	    $client = MongoDB::MongoClient->new(host => $host, port => $port);
-	    $dbh = $client->get_database("$name");
+	    $url = "mongodb://" . $host . ":$port/$name";
 	}
-
+	
+	$client = MongoDB->connect($url);
+	$dbh = $client->get_database("$name");
+        print "connected with mongodb\n";
+	
 	# Returning the database handle
 	return $dbh;
     
@@ -672,16 +717,16 @@ sub openDatabase
 	my $database = $_[0];
 	my $dsn = "DBI:$driver:database=$name;host=$host;port=$port";
 	
+	my $dbh = DBI->connect($dsn, $user, $pass, { RaiseError => 1, AutoCommit => 0, async => 1 }) 
+	    or die $DBI::errstr;
+	
 	if (lc($type) eq 'mysql')  {
 	    print "connected with mysql\n";
 	
 	}  else  {
 	    print "connected with mariadb\n";
 	}
-	
-	my $dbh = DBI->connect($dsn, $user, $pass, { RaiseError => 1, AutoCommit => 0, async => 1 }) 
-	    or die $DBI::errstr;
-    
+	    
 	# Returning the database handle
 	return $dbh;
     }
@@ -704,100 +749,98 @@ sub create_tables
     }
     
     foreach my $table ( @table_names ) {	
-	switch ( $table ) {
-	    case 'assess' {
-		$create = qq(CREATE TABLE $table_names[$counter]
-		(assessId		$primaryKey,
-		assessUuid		text			NOT NULL,
-		pkgShortName		text			NOT NULL,
-		pkgVersion		text,
-		toolType		text			NOT NULL,
-		toolVersion		text,
-		plat			text			NOT NULL,
-		startTs			real,
-		endTs            	real
-		););
-	    }
+	if ($table eq 'assess') {
+	    $create = qq(CREATE TABLE $table_names[$counter]
+	    (assessId		$primaryKey,
+	    assessUuid		text			NOT NULL,
+	    pkgShortName	text			NOT NULL,
+	    pkgVersion		text,
+	    toolType		text			NOT NULL,
+	    toolVersion		text,
+	    plat		text			NOT NULL,
+	    startTs		real,
+	    endTs            	real
+	    ););
+	}
 
-	    case 'weaknesses' {
-		$create = qq(CREATE TABLE $table_names[$counter]
-		(assessId		integer			NOT NULL,
-		bugId			integer			NOT NULL,
-		bugCode			text,
-		bugGroup		text,
-		bugRank			text,
-		bugSeverity		text,
-		bugMessage		text,
-		bugResolutionMsg	text,
-		classname		text,
-		bugCwe			text,
-		PRIMARY KEY (assessId, bugId)	
-		););
-	    }
+	if ($table eq 'weaknesses') {
+	    $create = qq(CREATE TABLE $table_names[$counter]
+	    (assessId		integer			NOT NULL,
+	    bugId		integer			NOT NULL,
+	    bugCode		text,
+	    bugGroup		text,
+	    bugRank		text,
+	    bugSeverity		text,
+	    bugMessage		text,
+	    bugResolutionMsg	text,
+	    classname		text,
+	    bugCwe		text,
+	    PRIMARY KEY (assessId, bugId)	
+	    ););
+	}
 
-	    case 'locations' {
-		$create = qq(CREATE TABLE $table_names[$counter]
-		(assessId		integer			NOT NULL,
-		bugId			integer			NOT NULL,
-		locId			integer			NOT NULL,
-		isPrimary		boolean			NOT NULL,
-		sourceFile		text			NOT NULL,
-		startLine		integer,
-		endLine			integer,
-		startCol		integer,
-		endCol			integer,
-		explanation		text,
-		PRIMARY KEY (assessId, bugId, locId)	
-		););
-	    }
+	if ($table eq 'locations') {
+	    $create = qq(CREATE TABLE $table_names[$counter]
+	    (assessId		integer			NOT NULL,
+	    bugId		integer			NOT NULL,
+	    locId		integer			NOT NULL,
+	    isPrimary		boolean			NOT NULL,
+	    sourceFile		text			NOT NULL,
+	    startLine		integer,
+	    endLine		integer,
+	    startCol		integer,
+	    endCol		integer,
+	    explanation		text,
+	    PRIMARY KEY (assessId, bugId, locId)	
+	    ););
+	}
 	
-	    case 'methods' {
-		$create = qq(CREATE TABLE $table_names[$counter]
-		(assessId		integer			NOT NULL,
-		bugId			integer			NOT NULL,
-		methodId		integer,
-		isPrimary        	boolean,
-		methodName       	text,
-		PRIMARY KEY (assessId, bugId, methodId)	
-		););
-	    }
+	if ($table eq 'methods') {
+	    $create = qq(CREATE TABLE $table_names[$counter]
+	    (assessId		integer			NOT NULL,
+	    bugId		integer			NOT NULL,
+	    methodId		integer,
+	    isPrimary        	boolean,
+	    methodName       	text,
+	    PRIMARY KEY (assessId, bugId, methodId)	
+	    ););
+	}
 
-	    case 'metrics' {
-		$create = qq(CREATE TABLE $table_names[$counter]
-		(assessId		integer			NOT NULL,
-		metricId		integer,
-		sourceFile		text,
-		class			text,
-		method			text,
-		type			text,
-		strVal			text,
-		numVal			real,
-		PRIMARY KEY (assessId, metricId)	
-		););
-	    }
+	if ($table eq 'metrics') {
+	    $create = qq(CREATE TABLE $table_names[$counter]
+	    (assessId		integer			NOT NULL,
+	    metricId		integer,
+	    sourceFile		text,
+	    class		text,
+	    method		text,
+	    type		text,
+	    strVal		text,
+	    numVal		real,
+	    PRIMARY KEY (assessId, metricId)	
+	    ););
+	}
 
-	    case 'functions' {
-		$create = qq(CREATE TABLE $table_names[$counter]
-		(assessId		integer			NOT NULL,
-		sourceFile		text,
-		class			text,
-		method			text,
-		startLine		integer,
-		endLine			integer
-		););
-	    }
-    }
+	if ($table eq 'functions') {
+	    $create = qq(CREATE TABLE $table_names[$counter]
+	    (assessId		integer			NOT NULL,
+	    sourceFile		text,
+	    class			text,
+	    method			text,
+	    startLine		integer,
+	    endLine			integer
+	    ););
+	}
 
-    # Creating the table with above fields		
-    $check = $dbh->do($create);
+	# Creating the table with above fields		
+	$check = $dbh->do($create);
 	   
  
-    # Checking whether the table is successfully created(works for each iteration)
-    if ($check < 0)  {
-    	print "$DBI::errstr\n";
+	# Checking whether the table is successfully created(works for each iteration)
+	if ($check < 0)  {
+	   print "$DBI::errstr\n";
+	}
+	$counter++;
     }
-    $counter++;
-}
     $dbh->commit();
 }
 
