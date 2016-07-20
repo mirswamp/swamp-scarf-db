@@ -1,136 +1,98 @@
-This document describes the steps involved in uploading SCARF results into MongoDB.
+This document's the program `scarf-to-database` that can be used to upload SCARF results into into either of NOSQL database (MongoDB) or SQL database (PostgreSQL, MySQL, MariaDB or SQLite3). Uploading SCARF results into any DBMS involves the following steps: 
 
-1. Install MongoDB
-2. Install Perl MongoDB drivers
-3. Running the perl scripts to upload SCARF results into a MongoDB database
+1. Installing the DBMS (see Appendix A)
+2. Install Perl drivers (see Appendix B)
+3. Configuration Files 
+4. Use the script `scarf-to-database` to save SCARF results
 
-#### 1. Installing MongoDB
-Follow the installation guide at [https://docs.mongodb.com/manual/installation/](https://docs.mongodb.com/manual/installation/) to install MongoDB.
+#### Configuration Files
 
-##### Installing MongoDB on RHEL platforms
-For installation specific to RHEL platforms please see [https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/](https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/)
+To save SCARF results into any database `scarf-to-database` perl script requires two config files as command line options, namely,
+* **authenticate.conf (optional)**  
+This file is **not required** if the DBMS does not have any username or password associated with it.  
+If there is a username and password save the following key value pairs in the config file:
+| Option | Description |
+|:---:|:---|
+| db-username=<database username> | Username for DBMS |
+| db-password=<database password> | Password for DBMS |
 
-> NOTE: On `rhel-6.4-64` platform, running `sudo yum install -y mongodb` will install an old version (2.4) of MongoDB. To install the latest version (3.2.8 or above) of MongoDB, please follow the steps in the section **Configure the package management system (yum)** in the tutorial.
+* **database.conf (required)**
+The following key value pair can be added into this conf file.
+| Option | Description |
+|:---:|:---|
+| `help` | Prints out the help menu on the console and exits |
+| `version` |  Prints out the version of the program and exits |
+| `db-type=<db-type>`  | Database type - It can be any of the databases supported, default: mongodb |
+| `db-host=<db-host-name>`  | Hostname of the DBMS server, default: localhost |
+| `db-port=<db-port-number>`  | Port on which the DBMS server listens on. default: 27017 (MongoDB), 5432 (PostgreSQL) or 3306 (MySQL, MariaDB)  |
+| `db-name=<name-of-the-database>`*  | Name of the database in which you want to save scarf results to. For eg: test, scarf, swamp. MongoDB and SQLite creates the database if it does not exist |
+| `db-table` | Creates tables for SQL databases |
+| `db-count` | Specifies the number of records or documents to be inserted, default: 1500 (MongoDB) or 100000 (SQL databases) |
+| `scarf=<path-to-the-scarf-file or path-to-parsed-results-conf-file>`*  | Path to the SCARF results XML (parsed\_results.xml) file or parsed\_results.conf file|
+| `pkg-name=<package-name>`* | Name of the software package that was assessed |
+| `pkg-version=<package-version>`* | Version of the software package that was assessed |
+| `platform=<platform-name>`* | Platform the assessment was run on |
 
-To summarize the steps involved to install a latest version of MongoDB on `rhel-6.4-64`:
+> Note: In the above table, options with \* are mandatory
 
-Add the following content to the file `/etc/yum.repos.d/mongodb-org-3.2.repo`.
+####  Saving the SCARF results into a database
 
-```conf
-[mongodb-org-3.2]
-name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/3.2/x86_64/
-gpgcheck=1
-enabled=1
-gpgkey=https://www.mongodb.org/static/pgp/server-3.2.asc
-```
-> NOTE: If the file `/etc/yum.repos.d/mongodb-org-3.2.repo` does not already exist please create it.
+To save the SCARF results into a database (Assuming you have that DBMS and appropriate perl drivers installed), use the script `scarf-to-database`.
 
-Run the following command to install MongoDB:
-```sh
-% sudo yum update -y # This is optional if your system is updated, and this may take a while
-% sudo yum install -y mongodb-org
-```
+To run the `scarf-to-database` script, the following information is required:
 
-##### Check if the MongoDB server is running
-If the installation is successful, please run the following command to check if the MongoDB server is running:
-```sh
-% mongo
-```
+1. db_params config file (shown in previous step)
+2. authentication config file (shown in previous step) 
 
-If the above command fails with a message **exception: connect failed** then mongodb is not running.
-
-Execute the following command to run mongodb:
-```sh
-% sudo /etc/init.d/mongod start
-```
-
-#### Authentication
-TODO: To be done
-
-#### 2. Installing Perl drivers to access MongoDB
-
-Install the following Perl drivers on the machine that you would want to access MongoDB from
-1. DBI
-2. DBD::Pg
-3. MongoDB
-
-On `rhel-6.4-64` platform, execute the following commands to install the drivers using CPAN
-```sh
-sudo cpan DBI DBD::Pg MongoDB
-```
-> NOTE: On `rhel-6.4-64` machines, user may also have to install `YAML` package from CPAN. To install the `YAML` package, execute the shell command `sudo cpan YAML`
-
-> NOTE: The above command may ask for user confirmation to install packages and its dependencies too many times. To avoid typing `yes` too many time, please run the following commands:
-
-```sh
-% sudo perl -MCPAN -e shell  # Opens up a CPAN shell
-	cpan[1]> o conf prerequisites_policy follow
-	cpan[2]> o conf build_requires_install_policy yes
-	cpan[3]> o conf commit
-```
-
-For more information on avoid the `yes` confirmation dialog please see [https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/](https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/).
-
-#### 3. Saving the SCARF results into MongoDB
-
-To save the results into MongoDB (Assuming successful installation of MongoDB and MongoDB perl drivers)
-
-1. By default, MongoDB server listens on `localhost:27017` network interface. To access MongoDB from outside the machine that MongoDB server is installed on, please [setup SSH tunnel](https://chamibuddhika.wordpress.com/2012/03/21/ssh-tunnelling-explained/) to the machine running MongoDB server. Example:
-```sh
-ssh -nNT -L 27017:127.0.0.1:27017 \
--o IdentityFile="$HOME/.ssh/id_rsa_mongodb" \
--o User=vamshi \
--tt VB-mongodb-rh64.vm.swamp.cs.wisc.edu
-```
-
-> NOTE: In case, if you want to change IP address and default port number for MongoDB, please see the instruction at [https://docs.mongodb.com/manual/reference/configuration-options/](https://docs.mongodb.com/manual/reference/configuration-options/). Also, make sure that your local Firewall settings allow connections to the MongoDB port.
-
-2. Set the environment variable `PERL5LIB` to include `scarf-to-database-x.x.x/scripts` directory. Example:
-```sh
-export PERL5LIB="$HOME/scarf-to-database-0.8.0/scripts:$PERL5LIB"
-```
-
-3. To save the scarf results into MongoDB, run the script `scarf-to-database-x.x.x/automate.pl`.
-
-The `scarf-to-database-x.x.x/automate.pl` has the following options:
+`scarf-to-database` script has the following command line options:
 
 | Option | Description |
 |:---:|:---|
-| `--help` | Prints out the help menu on the console and exits |
-| `--version` |  Prints out the version of the program and exits |
-| `--database <database-type>`* |   It is the name of the database client. Must be `mongodb`. It also supports: postgres, mysql, mariadb |
-| `--name <name-of-the-database>`*  | It is the name of the database in which you want to save data. For eg: test, scarf, swamp |
-| `--packages` |   If you are using directory as '.' which holds multiple sub directories for saving to the database use this command line argument with it |
-| `--create` | If you are using SQL based databases and haven't created the database with the name `<name-of-the-database>` |
-| `--tables` | If you are using SQL based databases and haven't created the tables, this flag tells the program to create the tables |
+| `--authenticate=<config file>`* | Config file containing authentication information |
+| `--db_params=<config file>`* | Config file containing database parameters |
+
+> Note: In the above table, options with \* are mandatory
 
 Example:
-```sh
-perl $HOME/scarf-to-database-0.8.0/automate.pl \
-	--database=mongodb \
-	--name=scarf \
-	--create \
-	--table \
-	--dir=$HOME/scarf-results/webgoat-5.4_1---rhel-6.4-64---findbugs-3.0.1---parse
+**authenticate.conf**
+```
+db-username=user
+db-password=password
 ```
 
-
-Example:
-```sh
-# To upload results from multiple assessments
-perl $HOME/scarf-to-database-0.8.0/automate.pl \
-	--database=mongodb \
-	--name=scarf \
-	--create \
-	--table \
-	--dir=$HOME/scarf-results/
+**database.conf**
+```
+db-host=VB-mongodb-rh64.vm.swamp.cs.wisc.edu
+db-name=scarf
+scarf=./lighttpd-1.4.33----rhel-6.7-32---gcc-warn/parsed_results.conf
+pkg-name=lighttpd
+pkg-version=1.4.33
+platform=rhel-6.7-32
 ```
 
-#### Example document
+```sh
+bin/scarf-to-database \
+	--db_params=database.conf \
+	--authenticate=authenticate.conf \
+```
+
+if the above command executes successfully, user will see output similar to:
+```
+------------------Started--------------------
+lighttpd, 1.4.33, rhel-6.7-32
+connected with mongodb
+Start Time: 13:36:17
+End Time: 13:36:20
+------------------Finished--------------------
+```
+
+> Note (For MongoDB):  If you notice any authentication related error messages from ``. Please check if the `authenticationDatabase` used for the user is same as the database that you are trying to access
+
+
+#### Example document (MongoDB)
 * **BugInstance**
 
-```sh
+```
 {  
 	"_id" : <Unique Id generated by mongodb for each document>,  
 	"bugCwe" : null,  
@@ -183,7 +145,7 @@ perl $HOME/scarf-to-database-0.8.0/automate.pl \
 }  
 ```
 
-* **If the package doesn't contain any BugInstance or Metric**
+* **If the package does not contain any BugInstance or Metric**
 
 ```
 {  
@@ -194,5 +156,196 @@ perl $HOME/scarf-to-database-0.8.0/automate.pl \
 	"toolVersion" : "1.64",  
 	"assessId" : <This is an unique ID generated by program and is same for a particular pkg and tool>,  
 	"plat" : "rhel-6.7-32",  
-	"pkgShortName" : "statsd-c",  
-}```
+	"pkgShortName" : "statsd-c"  
+}
+```
+
+#### Schema (SQL databases)
+* **BugInstance**
+
+```
+assess table:
+    assessId           integer PRIMARY KEY AUTOINCREMENT,
+    assessUuid         text                    			NOT NULL,
+    pkgShortName       text                    			NOT NULL,
+    pkgVersion         text,
+    toolType           text                    			NOT NULL,
+    toolVersion        text,
+    plat               text                    			NOT NULL,
+    startTs            real,
+    endTs              real
+	
+methods table:
+    assessId		integer			NOT NULL,
+    bugId		integer			NOT NULL,
+    methodId		integer,
+    isPrimary        	boolean,
+    methodName       	text,
+    PRIMARY KEY (assessId, bugId, methodId)	
+
+weaknesses table:
+    assessId           integer                 NOT NULL,
+    bugId              integer                 NOT NULL,
+    bugCode            text,
+    bugGroup           text,
+    bugRank            text,
+    bugSeverity        text,
+    bugMessage         text,
+    bugResolutionMsg   text,
+    classname          text,
+    bugCwe             text,
+    PRIMARY KEY (assessId, bugId)
+
+
+locations table:
+    assessId		integer			NOT NULL,
+    bugId		integer			NOT NULL,
+    locId		integer			NOT NULL,
+    isPrimary		boolean			NOT NULL,
+    sourceFile		text			NOT NULL,
+    startLine		integer,
+    endLine		integer,
+    startCol		integer,
+    endCol		integer,
+    explanation		text,
+    PRIMARY KEY (assessId, bugId, locId)	
+```
+
+* **Metric**
+
+```
+assess table:
+    assessId           integer PRIMARY KEY AUTOINCREMENT,
+    assessUuid         text                    			NOT NULL,
+    pkgShortName       text                    			NOT NULL,
+    pkgVersion         text,
+    toolType           text                    			NOT NULL,
+    toolVersion        text,
+    plat               text                    			NOT NULL,
+    startTs            real,
+    endTs              real
+
+metrics table:
+    assessId		integer			NOT NULL,
+    metricId		integer,
+    sourceFile		text,
+    class		text,
+    method		text,
+    type		text,
+    strVal		text,
+    numVal		real,
+    PRIMARY KEY (assessId, metricId)	
+
+functions table: 
+    assessId		integer			NOT NULL,
+    sourceFile		text,
+    class		text,
+    method		text,
+    startLine		integer,
+    endLine		integer
+```
+
+* **If the package does not contain any BugInstance or Metric**
+```
+assess table:
+    assessId           integer PRIMARY KEY AUTOINCREMENT,
+    assessUuid         text                    			NOT NULL,
+    pkgShortName       text                    			NOT NULL,
+    pkgVersion         text,
+    toolType           text                    			NOT NULL,
+    toolVersion        text,
+    plat               text                    			NOT NULL,
+    startTs            real,
+    endTs              real
+```
+
+### Appendix A
+#### 1. Installing MongoDB
+If you do not have MongoDB installed already, please follow the installation guide at [https://docs.mongodb.com/manual/installation/](https://docs.mongodb.com/manual/installation/)
+
+##### Installing MongoDB on RHEL based platforms
+For installation specific to RHEL based platforms please see [https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/](https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/)
+
+> NOTE: On `rhel-6.4-64` platform, executing `sudo yum install -y mongodb` will install an old version (2.4) of MongoDB. To install the latest version (3.2.8 or above) of MongoDB, please follow the steps in the section **Configure the package management system (yum)** in the tutorial [https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/](https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/)
+
+Example: To install `3.2.x` version of MongoDB on `rhel-6.4-64`:
+
+Create a file named `/etc/yum.repos.d/mongodb-org-3.2.repo` and add the following content to the file 
+
+```conf
+[mongodb-org-3.2]
+name=MongoDB Repository
+baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/3.2/x86_64/
+gpgcheck=1
+enabled=1
+gpgkey=https://www.mongodb.org/static/pgp/server-3.2.asc
+```
+
+Execute the following shell command to install MongoDB:
+```sh
+% sudo yum install -y mongodb-org
+```
+
+##### Check if the MongoDB server is running
+If the installation is successful, please execute the following command to check if the MongoDB server is running.
+```sh
+# Invokes Mongo Shell
+% mongo
+```
+
+If the above command fails with a message **exception: connect failed** then, MongoDB may not be running.
+
+Execute the following command to run MongoDB:
+```sh
+% sudo /etc/init.d/mongod start
+```
+
+By default, MongoDB server listens on `localhost:27017` network interface. To access MongoDB from outside the MongoDB server machine, please [setup SSH tunnel](https://chamibuddhika.wordpress.com/2012/03/21/ssh-tunnelling-explained/) to the machine running MongoDB server. Example:
+```sh
+ssh -nNT -L 27017:127.0.0.1:27017 <user-name>@<mongodb-host-name>
+```
+
+In case, if you want to change the network interface and default port number that MongoDB server must listen on, please see the instruction at [https://docs.mongodb.com/manual/reference/configuration-options/](https://docs.mongodb.com/manual/reference/configuration-options/). Also, make sure that your local firewall settings allow connections to the MongoDB port.
+
+
+##### Authentication
+By default, MongoDB does not require *root password or user accounts* to create databases and insert documents. If you like to authenticate and authorize users please see [https://docs.mongodb.com/manual/tutorial/enable-authentication/](https://docs.mongodb.com/manual/tutorial/enable-authentication/).
+
+#### 2. Installing PostgreSQL
+If you don't have PostgreSQL installed already, please follow the installation guide at [https://www.postgresql.org/download/linux/redhat/](https://www.postgresql.org/download/linux/redhat/)
+
+#### 3. Installing MySQL
+If you don't have MySQL installed already, please follow the installation guide at [https://dev.mysql.com/doc/mysql-repo-excerpt/5.6/en/linux-installation-yum-repo.html](https://dev.mysql.com/doc/mysql-repo-excerpt/5.6/en/linux-installation-yum-repo.html)
+
+#### 2. Installing MariaDB
+If you don't have MariaDB installed already, please follow the installation guide at [https://mariadb.com/kb/en/mariadb/yum/](https://mariadb.com/kb/en/mariadb/yum/)
+
+### Appendix B
+#### 2. Installing Perl drivers
+
+`scarf-to-database` program uses Perl drivers. Install the following Perl drivers on the machine that you would want to call scarf-to-database script from
+1. DBI
+2. DBD::pg
+3. MongoDB
+
+On `rhel-6.4-64` platform, execute the following commands to install the drivers using CPAN
+```sh
+sudo cpan DBI DBD::Pg MongoDB
+```
+> NOTE: On some `rhel-6.4-64` machines, users may also have to install `YAML and Config::AutoConf` packages from CPAN. To install the `YAML and Config::AutoConf` package, execute the following shell command:
+
+```sh
+% sudo cpan YAML Config::AutoConf
+```
+
+> NOTE: The above command may ask for user confirmation to install packages and its dependencies too many times. To avoid typing `yes` on the CPAN console too many time, please run the following commands:
+
+```sh
+% sudo perl -MCPAN -e shell  # Opens up a CPAN shell
+	cpan[1]> o conf prerequisites_policy follow
+	cpan[2]> o conf build_requires_install_policy yes
+	cpan[3]> o conf commit
+```
+
+For more information on how to avoid the `yes` confirmation dialog please see [https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/](https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/).
+

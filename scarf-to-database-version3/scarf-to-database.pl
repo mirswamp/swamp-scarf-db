@@ -35,10 +35,11 @@ sub main
     defaults(\%options);
     print "------------------Started--------------------\n";
     my ($sec,$min,$hour) = localtime(time);
-    my ($name, $database, $create, $table) = 
-	($options{'db-name'}, $options{'db-type'}, $options{'create'}, $options{'table'});
+    my ($name, $database, $table) = 
+	($options{'db-name'}, $options{'db-type'}, $options{'db-table'});
     
-    my ($pkg_name, $pkg_ver, $plat) = ($options{'pkg-name'}, $options{'pkg-version'}, $options{'platform'});
+    my ($pkg_name, $pkg_ver, $plat) = 
+	($options{'pkg-name'}, $options{'pkg-version'}, $options{'platform'});
     print "$pkg_name, $pkg_ver, $plat\n";
     
 
@@ -48,8 +49,9 @@ sub main
 	    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions");
 	    
 	    # creating the database and tables depending upon the commandline arguments
-	    if ($database eq 'postgres' || $database eq 'mariadb' || $database eq 'mysql')  {
-		if  ($table == 1)  {
+	    if ($database eq 'postgres' || $database eq 'mariadb' || $database eq 'mysql'
+		   || $database eq 'sqlite')  {
+		if  (defined ($table))  {
 		    create_tables($name, $database, $options{'db-host'}, $options{'db-port'}, 
 				    $options{'db-username'}, $options{'db-password'}, @tableNames);
 		}
@@ -58,7 +60,7 @@ sub main
 	    # Parsing the files
 	    parse_files("$values[1]/$values[2]", $name, $pkg_name, $pkg_ver, $plat, $database,
 			$options{'db-host'}, $options{'db-port'}, $options{'db-username'}, 
-			$options{'db-password'}); 
+			$options{'db-password'}, $options{'db-count'}); 
 	
 	    # Deleting the extracted file
 	    my $check = unlink "$values[1]/$values[2]";
@@ -73,7 +75,7 @@ sub main
         # Parsing the files
 	parse_files($options{'scarf'}, $name, $pkg_name, $pkg_ver, $plat, $database,
 		$options{'db-host'}, $options{'db-port'}, $options{'db-username'}, 
-		$options{'db-password'}); 
+		$options{'db-password'}, $options{'db-count'}); 
     }
     
     print "Start Time: $hour:$min:$sec\n";
@@ -184,7 +186,21 @@ sub defaults
 	$options->{'db-host'} = "localhost";
     } 
     if (!defined $options->{'db-port'}) {
-	$options->{'db-port'} = 27017;
+	if (lc($options->{'db-type'}) eq 'postgres') {
+	    $options->{'db-port'} = 5432;
+	} elsif (lc($options->{'db-type'}) eq 'mysql' || lc($options->{'db-type'}) eq 'mariadb' ) {
+	    $options->{'db-port'} = 3306;
+	} elsif (lc($options->{'db-type'}) eq 'mongodb') {
+	    $options->{'db-port'} = 27017;
+	}
+    }
+    if (!defined $options->{'db-count'}) {
+	if (lc($options->{'db-type'}) eq 'postgres' || lc($options->{'db-type'}) eq 'mariadb' ||
+	    lc($options->{'db-type'}) eq 'mysql' || lc($options->{'db-type'}) eq 'sqlite') {
+	    $options->{'db-count'} = 100000;
+	} elsif (lc($options->{'db-type'}) eq 'mongodb') {
+	    $options->{'db-count'} = 1500;
+	}
     }
 
 }
@@ -264,18 +280,20 @@ sub parse_files
 
     # Getting the name of the file and type
     my ($file, $name, $pkg_name, $pkg_ver, $plat, $database, $host, $port, 
-	$user, $pass) = @_;
+	$user, $pass, $count) = @_;
     $handlers{'pkgName'} = $pkg_name;
     $handlers{'pkgVer'} = $pkg_ver;
     $handlers{'plat'} = $plat;
     $handlers{'count'} = 0;
     $handlers{'name'} = $database;
+    $handlers{'db-count'} = $count;
 
     my $dbh = openDatabase($name, $database, $host, $port, $user, $pass);
     $handlers{'handler'} = $dbh;
     
 
-    if ($database eq 'postgres' || $database eq 'mysql' || $database eq 'mariadb')  {
+    if (lc($database) eq 'postgres' || lc($database) eq 'mysql' || 
+	    lc($database) eq 'mariadb' || lc($database) eq 'sqlite')  {
 	$handlers{'weakness'} = $dbh->prepare("INSERT INTO weaknesses VALUES 
 						(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"); 
 	$handlers{'locations'} = $dbh->prepare("INSERT INTO locations VALUES 
@@ -301,7 +319,7 @@ sub parse_files
 	$handlers{'handler'}->commit();
 	$handlers{'handler'}->disconnect();
     
-    }  else  {
+    }  elsif (lc($database) eq 'mongodb')  {
 	$handlers{'assess'} = $dbh->get_collection("assess");
 	$handlers{'assessId'} = MongoDB::OID->new->to_string;
 	my $callbackHash ={};
@@ -397,7 +415,7 @@ sub metric
     
     $handlers->{'count'}++;
 
-    if ($handlers->{'count'} == 100000)  {
+    if ($handlers->{'count'} == $handlers->{'db-count'})  {
 	$handlers->{'handler'}->commit();
 	$handlers->{'count'} = 0;	
     }
@@ -519,7 +537,7 @@ sub bug
     }
     
     $handlers->{'count'}++;
-    if ($handlers->{'count'} == 100000)  {
+    if ($handlers->{'count'} == $handlers->{'db-count'})  {
 	$handlers->{'handler'}->commit();
 	$handlers->{'count'} = 0;	
     }
@@ -569,7 +587,7 @@ sub metricMongo
     
     $handlers->{'count'}++;
 
-    if ($handlers->{'count'} == 1000) {
+    if ($handlers->{'count'} == $handlers->{'db-count'}) {
 	my $res = $handlers->{'assess'}->insert_many(\@{$handlers->{'scarf'}});
 	$handlers->{'count'} = 0;
 	delete $handlers->{'scarf'};
@@ -676,7 +694,7 @@ sub bugMongo
     
     $handlers->{'count'}++;
 
-    if ($handlers->{'count'} == 1000) {
+    if ($handlers->{'count'} == $handlers->{'db-count'}) {
 	my $res = $handlers->{'assess'}->insert_many(\@{$handlers->{'scarf'}});
 	$handlers->{'count'} = 0;
 	delete $handlers->{'scarf'};
@@ -715,10 +733,18 @@ sub openDatabase
 	# Returning the database handle
 	return $dbh;
     
+    }  elsif (lc($type) eq 'sqlite') {
+	my $driver   = "SQLite"; 
+	my $dsn = "DBI:$driver:dbname=$name";
+	my $dbh = DBI->connect($dsn, $user, $pass, { RaiseError => 1, AutoCommit => 0 }) 
+                         or die $DBI::errstr;
+	
+	print "connected with sqlite\n";
+
+	# Returning the database handle
+	return $dbh;
     } else  {
-    
 	my $driver = "mysql";
-	my $database = $_[0];
 	my $dsn = "DBI:$driver:database=$name;host=$host;port=$port";
 	
 	my $dbh = DBI->connect($dsn, $user, $pass, { RaiseError => 1, AutoCommit => 0, async => 1 }) 
@@ -752,6 +778,10 @@ sub create_tables
 	$primaryKey = "INT PRIMARY KEY AUTO_INCREMENT";
     }
     
+    if (lc($database) eq 'sqlite')  {
+	$primaryKey = "integer PRIMARY KEY AUTOINCREMENT";
+    }
+
     foreach my $table ( @table_names ) {	
 	if ($table eq 'assess') {
 	    $create = qq(CREATE TABLE $table_names[$counter]
