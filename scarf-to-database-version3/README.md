@@ -10,30 +10,35 @@ This document's the program `scarf-to-database` that can be used to upload SCARF
 To save SCARF results into any database `scarf-to-database` perl script requires two config files as command line options, namely,
 * **authenticate.conf (optional)**  
 This file is **not required** if the DBMS does not have any username or password associated with it.  
-If there is a username and password save the following key value pairs in the config file:
-| Option | Description |
-|:---:|:---|
-| db-username=<database username> | Username for DBMS |
-| db-password=<database password> | Password for DBMS |
+If there is a username and password save the following key value pairs in the config file:  
 
-* **database.conf (required)**
-The following key value pair can be added into this conf file.
-| Option | Description |
-|:---:|:---|
-| `help` | Prints out the help menu on the console and exits |
-| `version` |  Prints out the version of the program and exits |
-| `db-type=<db-type>`  | Database type - It can be any of the databases supported, default: mongodb |
-| `db-host=<db-host-name>`  | Hostname of the DBMS server, default: localhost |
-| `db-port=<db-port-number>`  | Port on which the DBMS server listens on. default: 27017 (MongoDB), 5432 (PostgreSQL) or 3306 (MySQL, MariaDB)  |
-| `db-name=<name-of-the-database>`*  | Name of the database in which you want to save scarf results to. For eg: test, scarf, swamp. MongoDB and SQLite creates the database if it does not exist |
-| `db-table` | Creates tables for SQL databases |
-| `db-count` | Specifies the number of records or documents to be inserted, default: 1500 (MongoDB) or 100000 (SQL databases) |
-| `scarf=<path-to-the-scarf-file or path-to-parsed-results-conf-file>`*  | Path to the SCARF results XML (parsed\_results.xml) file or parsed\_results.conf file|
-| `pkg-name=<package-name>`* | Name of the software package that was assessed |
-| `pkg-version=<package-version>`* | Version of the software package that was assessed |
-| `platform=<platform-name>`* | Platform the assessment was run on |
+| Option | Description |  
+|:---:|:---|  
+| `db-username=<database username>`*| Username for DBMS |  
+| `db-password=<database password>`* | Password for DBMS |
 
 > Note: In the above table, options with \* are mandatory
+
+* **database.conf (required)**  
+The following key value pairs can be added into this conf file.  
+
+| Option | Description |  
+|:---:|:---|  
+| `help` | Prints out the help menu on the console and exits |  
+| `version` |  Prints out the version of the program and exits |  
+| `db-type=<db-type>`  | Database type - It can be any of the databases supported, default: mongodb |  
+| `db-host=<db-host-name>`  | Hostname of the DBMS server, default: localhost |  
+| `db-port=<db-port-number>`  | Port on which the DBMS server listens on. default: 27017 (MongoDB), 5432 (PostgreSQL) or 3306 (MySQL, MariaDB)  |  
+| `db-name=<name-of-the-database>`*  | Name of the database in which you want to save scarf results to. For eg: test, scarf, swamp. MongoDB and SQLite creates the database if it does not already exists |  
+| `db-table=1` | Creates tables for SQL databases |  
+| `db-count=<Number>` | Specifies the number of records or documents to be inserted, default: 1500 (MongoDB) or 100,000 (SQL databases) |  
+| `scarf=<path-to-the-scarf-file or path-to-parsed-results-conf-file>`*  | Path to the SCARF results XML (parsed\_results.xml) file or parsed\_results.conf file|  
+| `pkg-name=<package-name>`* | Name of the software package that was assessed |  
+| `pkg-version=<package-version>`* | Version of the software package that was assessed |  
+| `platform=<platform-name>`* | Platform the assessment was run on |  
+
+> Note: In the above table, options with \* are mandatory  
+> Note: In MongoDB the value of **db-count** paramter decides the amount of memory required. If you notice high memory usage, try reducing the value of **db-count**. 
 
 ####  Saving the SCARF results into a database
 
@@ -53,7 +58,7 @@ To run the `scarf-to-database` script, the following information is required:
 
 > Note: In the above table, options with \* are mandatory
 
-Example:
+#### Example run:  
 **authenticate.conf**
 ```
 db-username=user
@@ -70,6 +75,7 @@ pkg-version=1.4.33
 platform=rhel-6.7-32
 ```
 
+**Execution command**
 ```sh
 bin/scarf-to-database \
 	--db_params=database.conf \
@@ -86,7 +92,7 @@ End Time: 13:36:20
 ------------------Finished--------------------
 ```
 
-> Note (For MongoDB):  If you notice any authentication related error messages from ``. Please check if the `authenticationDatabase` used for the user is same as the database that you are trying to access
+> Note (For MongoDB):  If you notice any authentication related error messages. Please check if the `authenticationDatabase` used for the user is same as the database that you are trying to access
 
 
 #### Example document (MongoDB)
@@ -176,11 +182,11 @@ assess table:
     endTs              real
 	
 methods table:
-    assessId		integer			NOT NULL,
-    bugId		integer			NOT NULL,
+    assessId	    integer			NOT NULL,
+    bugId		    integer			NOT NULL,
     methodId		integer,
-    isPrimary        	boolean,
-    methodName       	text,
+    isPrimary       boolean,
+    methodName      text,
     PRIMARY KEY (assessId, bugId, methodId)	
 
 weaknesses table:
@@ -199,14 +205,14 @@ weaknesses table:
 
 locations table:
     assessId		integer			NOT NULL,
-    bugId		integer			NOT NULL,
-    locId		integer			NOT NULL,
+    bugId		    integer			NOT NULL,
+    locId		    integer			NOT NULL,
     isPrimary		boolean			NOT NULL,
     sourceFile		text			NOT NULL,
     startLine		integer,
-    endLine		integer,
+    endLine		    integer,
     startCol		integer,
-    endCol		integer,
+    endCol		    integer,
     explanation		text,
     PRIMARY KEY (assessId, bugId, locId)	
 ```
@@ -229,20 +235,20 @@ metrics table:
     assessId		integer			NOT NULL,
     metricId		integer,
     sourceFile		text,
-    class		text,
-    method		text,
-    type		text,
-    strVal		text,
-    numVal		real,
+    class		    text,
+    method		    text,
+    type		    text,
+    strVal		    text,
+    numVal		    real,
     PRIMARY KEY (assessId, metricId)	
 
 functions table: 
     assessId		integer			NOT NULL,
     sourceFile		text,
-    class		text,
-    method		text,
+    class		    text,
+    method		    text,
     startLine		integer,
-    endLine		integer
+    endLine		    integer
 ```
 
 * **If the package does not contain any BugInstance or Metric**
@@ -347,5 +353,4 @@ sudo cpan DBI DBD::Pg MongoDB
 	cpan[3]> o conf commit
 ```
 
-For more information on how to avoid the `yes` confirmation dialog please see [https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/](https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/).
-
+For more information on how to avoid the `yes` confirmation dialog please see [https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/](https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/).  
