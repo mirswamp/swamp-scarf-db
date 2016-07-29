@@ -1,5 +1,5 @@
-<p align='center'><strong>scarf-to-db USER GUIDE</strong></p>  
-			
+<title><h3><center><strong>scarf-to-db USER GUIDE</strong></h3></center></title>
+  	
 This document's the program `scarf-to-db` that can be used to upload SCARF results into a NOSQL database (MongoDB) or SQL databases (PostgreSQL, MySQL, MariaDB or SQLite3). Uploading SCARF results into any DBMS involves the following steps: 
 
 1. Installing the DBMS (see Appendix A)
@@ -10,35 +10,21 @@ This document's the program `scarf-to-db` that can be used to upload SCARF resul
 6. Extras (example documents, schema for SQL tables, etc.)
 
 #### **Edit Configuration Files**
-To operate, scarf-to-db requires configuration.  The configuration can
-be set using the command line, or via configuration files.  Scarf-to-db
-supports two configuration files:  _scarf-to-db.conf_ for database
-configuration, and _scarf-to-db-auth.conf_ for database credential data
-(the permissions of this file should be restricted as it contains
-sensitive information).  The use of the configuration files is optional,
-but recommended.
 
-The value for an option is determined by first one of these that sets
-the value: 1) command line options, 2) the scarf-to-db-auth.conf 
-configuration file, 3) the scarf-to-db.conf file, and finally 
-4) defaults built-in to scarf-to-db.
+To operate, scarf-to-db requires configuration.  The configuration can be set using the command line, or via configuration files.  Scarf-to-db supports two configuration files:  _scarf-to-db.conf_ for database configuration, and _scarf-to-db-auth.conf_ for database credential data (the permissions of this file should be restricted as it contains sensitive information).  The use of the configuration files is optional, but recommended.
 
-The location of configuration files can be set from an option before it
-is read.  If the configuration file location is explicitly set, it will result in an
-error if the file does not exist, but if the value is the default value,
-the configuration file is skipped if not present.
+The value for an option is determined by first one of these that sets the value: 1) command line options, 2) the scarf-to-db-auth.conf configuration file, 3) the scarf-to-db.conf file, and finally 4) defaults built-in to scarf-to-db.
 
-The remainder of these sections describes each option and is grouped by
-the most appropriate place to set the option starting with the
-scarf-to-db.conf options, then scarf-to-db-auth.conf options, and finally
-options most appropriately passed as command line options. 
+The location of configuration files can be set from an option before it is read.  If the configuration file location is explicitly set, it will result in an error if the file does not exist, but if the value is the default value, the configuration file is skipped if not present.
 
-##### 1. scarf-to-db.conf 
+The remainder of these sections describes each option and is grouped by the most appropriate place to set the option starting with the scarf-to-db.conf options, then scarf-to-db-auth.conf options, and finally options most appropriately passed as command line options. 
+
+##### **scarf-to-db.conf**
 
 The following key value pairs can be added into this configuration file. 
 
 | Option | Description |  
-|:---:|:---|  
+|:---|:---|  
 | `db-type=<type>`  | Database type - It can be any of the databases supported, default: mongodb |  
 | `db-host=<host>`  | Hostname of the DBMS server, default: localhost |  
 | `db-port=<port>`  | Port on which the DBMS server listens on. default: 27017 (MongoDB), 5432 (PostgreSQL) or 3306 (MySQL, MariaDB)  |  
@@ -52,28 +38,28 @@ The following key value pairs can be added into this configuration file.
 > **Note:** In the above table, options with \* are mandatory  
 > **Note:** For MongoDB the amount of memory used depends on the value of _db_commits_ option. If you notice high memory usage, try reducing the value of _db_commits_. 
 
-##### 2. scarf-to-db-auth.conf
+##### **scarf-to-db-auth.conf**
 
 The following key value pairs can be added into this configuration file.
 
 | Option | Description |  
-|:---:|:---|  
+|:---|:---|  
 | `db-username=<username>`*| Username for DBMS |  
 | `db-password=<password>`* | Password for DBMS |
 
 > **Note:** In the above table, options with \* are mandatory 
 
-##### 3. command line options
+##### **command line options**
 scarf-to-db can take following command line options.
 | Option | Description |
-|:---:|:---|
+|:---|:---|
 | `scarf=<path>`*  | Path to the SCARF results XML (parsed\_results.xml) file or parsed\_results.conf file| 
-| `--db_params=<path>`* | Path to Config file containing database parameters (default location: current directory) |
+| `--db_params=<path>` | Path to Config file containing database parameters (default location: current directory) |
 | `help` | Prints out the help menu on the console and exits |  
 | `version` |  Prints out the version of the program and exits |  
-| `create_tables` | Creates tables for SQL databases and **saves the data**|
-| `delete_tables` | Deletes tables for SQL databases and exits |
-| `just_print` | Prints out the commands used for database execution and exits | 
+| `create-tables` | Creates tables for SQL databases and **saves the data**|
+| `delete-tables` | Deletes tables for SQL databases and exits |
+| `just-print` | Prints out the commands used for database execution and exits | 
 
 > **Note:** In the above table, options with \* are mandatory
 
@@ -81,9 +67,9 @@ scarf-to-db can take following command line options.
 
 To create or delete SQL tables specify the corresponding command line options as mentioned in the previous step. Here are the command line options again for reference.
 | Option | Description |  
-|:---:|:---|  
-| `create_tables` | Creates tables for SQL databases and **saves the data** |
-| `delete_tables` | Deletes tables for SQL databases and **exits the script** |
+|:---|:---|  
+| `create-tables` | Creates tables for SQL databases and **saves the data** |
+| `delete-tables` | Deletes tables for SQL databases and **exits the script** |
 
 > For more information regarding the schema of the tables refer to **Extras** section.
 
@@ -103,22 +89,22 @@ To run the `scarf-to-db` script, the following information is required:
 
 #### **Extras**
 
-##### Examples:
+##### **Examples:**
  
 **scarf-to-db-auth.conf (default location: current directory)**
 ```
-db-username=user
-db-password=password
+db-username = user
+db-password = password
 ```
 
 **scarf-to-db.conf (default location: current directory)**
 ```
-db-host=VB-mongodb-rh64.vm.swamp.cs.wisc.edu
-db-name=scarf
-pkg-name=lighttpd
-pkg-version=1.4.33
-platform=rhel-6.7-32
-authenticate=scarf-to-db-auth.conf
+db-host = VB-mongodb-rh64.vm.swamp.cs.wisc.edu
+db-name = scarf
+pkg-name = lighttpd
+pkg-version = 1.4.33
+platform = rhel-6.7-32
+authenticate = scarf-to-db-auth.conf
 ```
 
 **Execution command **
@@ -130,7 +116,7 @@ bin/scarf-to-db \
 > **Note:** If the above command executes successfully, user will not see any output and the data will be saved to the DBMS.  
 > **Note (For MongoDB):**  If you notice any authentication related error messages. Please check if the `authenticationDatabase` used for the user is same as the database that you are trying to access
 
-##### Example document (MongoDB)
+##### **Example document (MongoDB)**
 * **BugInstance**
 
 ```
@@ -150,7 +136,7 @@ bin/scarf-to-db \
 	"classname" : "NULL",  
 	"bugResolutionMsg" : "NULL",  
 	"assessUuid" : "8f74881a-cf90-429e-9e35-bb2484bd2529",  
-	"BugMessage" : "function declaration isnât a prototype ",
+	"BugMessage" : "function declaration isn't a prototype ",
 	"pkgShortName" : "lighttpd",  
 	"bugCode" : "-Wstrict-prototypes",  
 	"Location" : [  
@@ -201,7 +187,7 @@ bin/scarf-to-db \
 }
 ```
 
-##### Schema (SQL databases)
+##### **Schema (SQL databases)**
 * **BugInstance**
 
 ```
