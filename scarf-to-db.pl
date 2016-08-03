@@ -33,25 +33,44 @@ use MongoDB;
 sub main
 {
     my %options = ProcessOptions();
+    
     my ($name, $database) = 
 	($options{db_name}, $options{db_type});
     
     my ($pkg_name, $pkg_ver, $plat) = 
 	($options{pkg_name}, $options{pkg_version}, $options{platform});
    
+    # printing out the execution commands
+    if (defined $options{just_print})  {
+	defined $options{create_tables} and justPrint('create', $options{db_type});
+	defined $options{delete_tables} and justPrint('delete', $options{db_type});
+	defined $options{scarf} and justPrint('insert', $options{db_type});
+	exit 0;
+    }
+   
+    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions");
+    
+    # Processing the table options depending on the command line arguments
+    if (($database eq 'postgres' || $database eq 'mariadb' || $database eq 'mysql'
+	   || $database eq 'sqlite') && ($options{create_tables} 
+	   || $options{delete_tables}))  {
+	ProcessTableOptions($options{delete_tables}, $options{create_tables}, $name, 
+			    $database, $options{db_host}, $options{db_port}, 
+			    $options{db_username}, $options{db_password}, @tableNames);
+	exit 0;
+    }
+
+    # Testing the authentication information
+    if (defined($options{test_auth})) {
+	TestConnection($name, $database, $options{db_host}, $options{db_port},
+			$options{db_username}, $options{db_password});
+	exit 0;
+    }
+
+    # Saving SCARF results
     if ($options{scarf} =~ /^.*.conf$/) {
 	my ($retVal, %names) = findScarf($options{scarf});
-	if ($retVal == 1) {   
-	    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions");
-	    
-	    # creating the database and tables depending upon the commandline arguments
-	    if ($database eq 'postgres' || $database eq 'mariadb' || $database eq 'mysql'
-		   || $database eq 'sqlite')  {
-		ProcessTableOptions($options{delete_tables}, $options{create_tables}, $name, 
-				    $database, $options{db_host}, $options{db_port}, 
-				    $options{db_username}, $options{db_password}, @tableNames);
-	    }
-
+	if ($retVal == 1) {   	    
 	    # Parsing the files
 	    parse_files($name, $pkg_name, $pkg_ver, $plat, $database,
 			$options{db_host}, $options{db_port}, $options{db_username}, 
@@ -75,8 +94,8 @@ sub ProcessOptions
     my %optionDefaults = (
 	help            => 0,
 	version         => 0,
-	authenticate   	=> 'scarf-to-db-auth.conf',
-	db_params	=> 'scarf-to-db.conf',
+	auth_conf   	=> 'scarf-to-db-auth.conf',
+	conf		=> 'scarf-to-db.conf',
 	db_type		=> 'mongodb',
 	db_host		=> 'localhost',
 	create_tables	=> undef,
@@ -91,6 +110,7 @@ sub ProcessOptions
 	just_print	=> undef,
 	db_username	=> undef,
 	db_password	=> undef,
+	test_auth	=> undef,
 	);
 
     # for options that contain a '-', make the first value be the
@@ -101,12 +121,12 @@ sub ProcessOptions
     my @options = (
 	"help|h!",
 	"version|v!",
-	"authenticate=s",
-	"db_params|db-params|c=s",
-	"db_type|type=s",
+	"auth_conf|auth-conf=s",
+	"conf=s",
+	"db_type|db-type=s",
 	"db_host|db-host=s",
-	"create_tables!",
-	"delete_tables!",
+	"create_tables|create-tables!",
+	"delete_tables|delete-tables!",
 	"db_port|db-port=s",
 	"db_commits|db-commits=s",
 	"db_name|db-name=s",
@@ -114,9 +134,10 @@ sub ProcessOptions
 	"pkg_name|pkg-name=s",
 	"pkg_version|pkg-version=s",
 	"platform=s",
-	"just_print|j!",
+	"just_print|just-print|n!",
 	"db_username|db-username=s",
 	"db_password|db-password=s",
+	"test_auth|test-auth!",
     );
 
     
@@ -125,7 +146,7 @@ sub ProcessOptions
     my $ok = GetOptions(\%getoptOptions, @options);
 
     # Checking whether appropriate command line options were given
-    my @confFileOptions = qw/ db_params authenticate /;
+    my @confFileOptions = qw/ auth_conf conf /;
     
     my %options = %optionDefaults;
     my %optSet;
@@ -171,12 +192,6 @@ sub ProcessOptions
 	exit 0;
     }
 
-    # printing out the execution commands
-    if (defined $options{just_print})  {
-	justPrint();
-	exit 0;
-    }
-    
     # Setting the defaults 
     defaults(\%options);
     
@@ -186,40 +201,75 @@ sub ProcessOptions
     my %types = (
 	'postgres'	=> {
 				auth	=> 1,
+				tables	=> 1,
 	}, 
 	'mongodb'	=> {
 				auth	=> 0,
+				tables	=> 0,
 	}, 
 	'mariadb'	=> {
 				auth 	=> 1,
+				tables	=> 1,
 	}, 
 	'sqlite'	=> {
 				auth	=> 0,
+				tables	=> 1,
 	},
 	'mysql'		=> {
 				auth	=> 1,
+				tables	=> 1,
 	},
     );
     
+    my $count = 0;
+
+    # Checking whether appropriate command line options are provided
+    defined $options{just_print} and $count++;
+    defined $options{just_print} and defined $options{scarf} and $count++;
+    defined $options{just_print} and defined $options{create_tables} and $count++;
+    defined $options{just_print} and defined $options{delete_tables} and $count++;
+    
+    # Checking that one other option is provided with just-print option
+    if ($count == 1) {
+	print "Please provide one of the following options: scarf, " 
+		. "create_tables or delete_tables with --just-print or -n option.\n";
+	exit(1);
+    }
+    
+    if ($count > 2) {
+	print "Please provide 'only' one of the following options: scarf, " 
+		. "create_tables or delete_tables with --just-print or -n option.\n";
+	exit(1);
+    }
+    
+    # Checking for other options
     if (exists($types{$options{db_type}})) {
-	if ($types{$options{db_type}}{auth} && 
-			!defined $getoptOptions{authenticate}) {
-		push @errors, "No authenticate.conf file provided\n";	
+        if ($types{$options{db_type}}{auth} && $count == 0 && 
+	    !defined $options{auth_conf}) {
+	    push @errors, "No scarf-to-db-auth.conf file provided\n";	
         }
     } else {
 	push @errors, "Database type \'$options{db_type}\' is incorrect\n";
     }
     
-    if (!defined $options{db_name})  {
-	push @errors, "No database name provided\n";
+    if (!defined $options{delete_tables} && !defined $options{create_tables} 
+		&& !defined $options{test_auth}) {
+	if (!defined $options{db_name} && $count == 0)  {
+	    push @errors, "No database name provided\n";
+	}
+    
+	if (!defined $options{scarf} && $count == 0)  {
+	    push @errors, "No scarf file or results conf file provided\n";
+	}
+    } elsif (defined $options{test_auth}) {
+	# Ignore this option	
+    } elsif (!$types{$options{db_type}}{tables}) {
+	    print "Schema of tables is only available for SQL tables and NOT MongoDB\n";
+	    exit 1;
     }
     
-    if (!defined $options{scarf})  {
-	push @errors, "No scarf file or results conf file provided\n";
-    }
-
     # Checking the errors array for any errors
-    if (@errors) {
+    if (@errors)  {
 	print @errors;
 	exit(1);
     }
@@ -233,9 +283,9 @@ sub defaults
 
     my ($options) = @_;
     
-    defined $options->{pkg_name} or $options->{pkg_name} = 'NULL';
-    defined $options->{pkg_version} or $options->{pkg_version} = 'NULL';    
-    defined $options->{platform} or $options->{platform} = 'NULL';
+    defined $options->{pkg_name} or $options->{pkg_name} = undef;
+    defined $options->{pkg_version} or $options->{pkg_version} = undef;    
+    defined $options->{platform} or $options->{platform} = undef;
     
     my %dbPorts = (
 	postgres	=> 5432,
@@ -265,40 +315,46 @@ sub printHelp
     my $progname = $0;
     print STDERR <<EOF;
 
-    Usage: $progname [options] <dir>...
-    Find scarf file in the given directory name. Parse scarf file and save 
-    parsed results in a database.
+    Usage: $progname [options] [value] 
+    Parse the given XML SCARF file and save the results in any of the
+    following databases: MongoDB, PostgreSQL, MariaDB, MySQL or SQLite
 
-    options:
-    --help                      -h print this message
-    --version                   -v print version
-    --authenticate=<path>	conf file containing the username 
-				    and password for database
-    --db-params=<path>  	conf file containing the database parameters
-    --db-type		   	DB type can be any of the databases supported, 
-				default: mongodb,
-    --db-host			Hostname of the DBMS server, 
-				    default: localhost,
-    --create-tables		Creates tables for SQL databases,
-    --delete-tables		Deletes tables for SQL databases,
-    --db-port			Port on which the DBMS server listens on. 
-				    default: 27017 (MongoDB), 5432 (PostgreSQL) 
-						or 3306 (MySQL, MariaDB),
-    --db-commits		Number of weaknesses to commit at once.
-				    default: INF(infinity) for SQL databases,
-					     1500 for MongoDB
-    --db-name			Name of the db in which you want to save the 
-				scarf results. For eg: test, scarf, swamp. 
+Options:
+    -h [ --help ]               print this message
+    -v [ --version ]            print version
+    --auth-conf			path to the conf file containing the username
+				and password for database
+    --conf	  		path to the conf file containing the database 
+				parameters
+    --db-type		   	this can be any of the databases supported, 
+				default: mongodb
+    --db-host			hostname of the DBMS server, default: localhost
+    --create-tables		creates tables for SQL databases
+    --delete-tables		deletes tables for SQL databases
+    --db-port			port on which the DBMS server listens on, 
+				default: 27017 (MongoDB), 5432 (PostgreSQL) 
+				or 3306 (MySQL, MariaDB),
+    --db-commits		max number of weaknesses to commit at once
+				default: INF(infinity) for SQL databases,
+				1500 for MongoDB
+    --db-name			name of the db in which you want to save the 
+				scarf results. For eg: test, scarf, swamp etc. 
 				MongoDB and SQLite creates the db if it does not 
-				already exist,
-    --scarf                     -S  Path to the SCARF results XML (parsed_results.xml) file
-				        or parsed_results.conf file,
-    --pkg-name			Name of the package that was assessed,
-    --pkg-version		Version of the package that was assessed,
-    --platform			Platform the assessment was run on,
-    --just-print		-j prints out create, insert, delete statements
+				already exist
+    -S [ --scarf ]              path to the SCARF results XML 
+				(parsed_results.xml) or parsed_results.conf file
+    --pkg-name			name of the package that was assessed
+    --pkg-version		version of the package that was assessed
+    --platform			platform the assessment was run on
+    -n [ --just-print ]		prints out create, insert or delete statements 
+				depending the other argument passed with this 
+				option
+
+Authentication Options:
     --db-username 		Username for DBMS
     --db-password		Password for DBMS
+    --test-auth			Verifies authentication credentials for the 
+				database type
 
 EOF
 }
@@ -307,7 +363,7 @@ EOF
 #################################### Print version of the program #################################
 sub printVersion
 {
-    my $version = '0.9.0 (July 29, 2016)';
+    my $version = '0.9.0 (August 2, 2016)';
     my $progname = $0;
     print "$progname version $version\n";
 }
@@ -315,47 +371,64 @@ sub printVersion
 #################################### Printing the database commands #################################
 sub justPrint
 {
-    my ($paramter) = @_;
-    my %createStatements = SQLStatements('create');
-    my %insertStatements = SQLStatements('insert');
-    my %metricStatement = MongoDBStatements('metric');
-    my %bugStatement = MongoDBStatements('bug');
-    my ($deleteStatement, @tableNames) = SQLStatements('delete');
+    my ($operation, $type, $stmtType, @values) = @_;
+    my $retValue = 0;
     
-    print "\n\t\t\t-- SQL STATEMENTS --\n";
-    print "\n\t\t\t- INSERT STATEMENTS -\n\n";
-    while (my ($k, $v) = each %insertStatements) {
-	print "$v\n";
+    if (defined ($stmtType) && @values) {
+	my %statements = SQLStatements('insert', $type);
+	my @insertValues = @values;
+	if ($statements{$stmtType} =~ /^(.*?)\(\?/s) { 
+	
+	    if ($stmtType eq 'assess') {
+		foreach my $value (@insertValues) {
+		    if (!defined $value) {
+			$value = '';
+		    } 	
+		}
+		my $insert = join("\', \'", @insertValues);
+		$insert = "$1 \(\'$insert\'\);";
+		$retValue = $insert;
+	    } 
+	
+	    foreach my $value (@values) {
+		if (!defined $value) {
+		    $value = 'null';
+		} else {
+		    $value = "\'$value\'";
+		}
+	    }
+	    my $insert = join(", ", @values);
+	    $insert = "$1 \($insert\);";
+	    print "$insert\n";
+	}
+    } else {
+	print "\n";
+	if ($operation ne 'delete') {
+	    my %statements = SQLStatements($operation, $type);
+	    $operation = uc($operation);
+	    while (my ($k, $v) = each %statements) {
+		print "$v\n";
+	    }
+	} else {
+	    my ($deleteStatement, @tableNames) = SQLStatements($operation, $type);
+	    $operation = uc($operation);
+	    foreach my $table (@tableNames) {
+		print "$deleteStatement $table;\n";
+	    }
+	}
+	print "\n";
     }
-    print "\n\t\t\t- CREATE STATEMENTS -\n\n";
-    while (my ($k, $v) = each %createStatements) {
-	print "$v\n";
-    }
-    print "\n\t\t\t- DELETE STATEMENTS -\n\n";
-    foreach my $table (@tableNames) {
-	print "$deleteStatement $table;\n";
-    }
-
-    print "\n\t\t\t-- MongoDB STATEMENTS --\n";
-    print "\n\t\t\t- BUGS STATEMENT -\n\n";
-    while (my ($k, $v) = each %bugStatement) {
-	print "$k => $v\n";
-    }
-    print "\n\t\t\t- METRIC STATEMENT -\n\n";
-    while (my ($k, $v) = each %metricStatement) {
-	print "$k => $v\n";
-    }
-    print "\n";
+    return $retValue;
 }
 
 
 #################################### SQL database commands #################################
 sub SQLStatements
 {
-	my ($parameter) = @_; 
+	my ($operation, $db_type) = @_; 
 	my %insertStatements = (
-	    assess	=>  "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype,
-				toolversion, plat) VALUES (?, ?, ?, ?, ?, ?);", 
+	    assess	=>  "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, " .
+			    "toolversion, plat) VALUES (?, ?, ?, ?, ?, ?);", 
 	    weaknesses	=> "INSERT INTO weaknesses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
 	    locations	=> "INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", 
 	    methods	=> "INSERT INTO methods VALUES (?, ?, ?, ?, ?);",
@@ -363,20 +436,30 @@ sub SQLStatements
 	    functions	=> "INSERT INTO functions VALUES (?, ?, ?, ?, ?, ?);",
 	);
 
+	my $primaryKey = "BIGSERIAL PRIMARY KEY";
+
+	if ($db_type eq 'mariadb' || $db_type eq 'mysql')  {
+	    $primaryKey = "INT PRIMARY KEY AUTO_INCREMENT";
+	}
+    
+	if ($db_type eq 'sqlite')  {
+	    $primaryKey = "integer PRIMARY KEY AUTOINCREMENT";
+	}
+
 	my %createStatements = (
 	    assess	=> qq(CREATE TABLE assess ( 
-			    assessId		?,
-			    assessUuid		text		NOT NULL,
-			    pkgShortName	text		NOT NULL,
+			    assessId		$primaryKey,
+			    assessUuid		text			NOT NULL,
+			    pkgShortName	text,
 			    pkgVersion		text,
-			    toolType		text		NOT NULL,
+			    toolType		text			NOT NULL,
 			    toolVersion		text,
-			    plat		text		NOT NULL
+			    plat		text
 			    );),
-
+	    
 	    weaknesses	=> qq(CREATE TABLE weaknesses (
-			    assessId		integer		NOT NULL,
-			    bugId		integer		NOT NULL,
+			    assessId		integer			NOT NULL,
+			    bugId		integer			NOT NULL,
 			    bugCode		text,
 			    bugGroup		text,
 			    bugRank		text,
@@ -389,11 +472,11 @@ sub SQLStatements
 			    );),
 
 	    locations	=> qq(CREATE TABLE locations (
-			    assessId		integer		NOT NULL,
-			    bugId		integer		NOT NULL,
-			    locId		integer		NOT NULL,
-			    isPrimary		boolean		NOT NULL,
-			    sourceFile		text		NOT NULL,
+			    assessId		integer			NOT NULL,
+			    bugId		integer			NOT NULL,
+			    locId		integer			NOT NULL,
+			    isPrimary		boolean			NOT NULL,
+			    sourceFile		text			NOT NULL,
 			    startLine		integer,
 			    endLine		integer,
 			    startCol		integer,
@@ -403,8 +486,8 @@ sub SQLStatements
 			    );),
 	
 	    methods	=> qq(CREATE TABLE methods (
-			    assessId		integer		NOT NULL,
-			    bugId		integer		NOT NULL,
+			    assessId		integer			NOT NULL,
+			    bugId		integer			NOT NULL,
 			    methodId		integer,
 			    isPrimary        	boolean,
 			    methodName       	text,
@@ -412,8 +495,8 @@ sub SQLStatements
 			    );),
 
 	    metrics	=> qq(CREATE TABLE metrics (
-			    assessId		integer		NOT NULL,
-			    metricId		integer,
+			    assessId		integer			NOT NULL,
+			    metricId		integer			NOT NULL,
 			    sourceFile		text,
 			    class		text,
 			    method		text,
@@ -424,7 +507,7 @@ sub SQLStatements
 			    );),
 
 	    functions	=> qq(CREATE TABLE functions ( 
-			    assessId		integer		NOT NULL,
+			    assessId		integer			NOT NULL,
 			    sourceFile		text,
 			    class		text,
 			    method		text,
@@ -435,60 +518,13 @@ sub SQLStatements
 
 	my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions");
 	
-	if ($parameter eq 'create')  {
+	if ($operation eq 'create')  {
 	    return (%createStatements);
-	} elsif ($parameter eq 'insert')  {
+	} elsif ($operation eq 'insert')  {
 	    return (%insertStatements);
-	} elsif ($parameter eq 'delete') {
+	} elsif ($operation eq 'delete') {
 	    return ("DROP TABLE ", @tableNames);
 	} 
-}
-
-######################################## Inserting MongoDB commands ##################################
-sub MongoDBStatements
-{
-    my ($parameter) = @_;
-    my %metricInstance = (  assessId     	=> '?', 
-			    assessUuid   	=> '?', 
-			    pkgShortName 	=> '?', 
-			    pkgVersion   	=> '?',
-			    toolType     	=> '?',
-			    toolVersion  	=> '?',
-			    plat         	=> '?',
-			    Value 		=> '?',
-			    Type 		=> '?',
-			    Method 		=> '?',
-			    Class 		=> '?',
-			    SourceFile	 	=> '?',
-			    MetricId 		=> '?',
-			);
-
-    my %bugInstance = ( assessId     	=> '?',
-			assessUuid   	=> '?',
-			pkgShortName 	=> '?',
-			pkgVersion   	=> '?',
-			toolType     	=> '?',
-			toolVersion  	=> '?',
-			plat         	=> '?',
-			BugMessage   	=> '?',
-			BugGroup     	=> '?',
-			Location     	=> '?',
-			Methods      	=> '?',
-			BugId 	        => '?',
-			BugCode          => '?',
-			BugRank          => '?',
-			BugSeverity      => '?',
-			BugResolutionMsg => '?',
-			classname        => '?',	
-			BugCwe           => '?',
-			);
-
-    if ($parameter eq 'metric') {
-	return %metricInstance;
-    } elsif ($parameter eq 'bug') {
-	return %bugInstance;
-    }
-
 }
 
 ################################# Finds the scarf file in the given directory ################################
@@ -532,7 +568,6 @@ sub findScarf
     }
     
     # Extracting the scarf from the given tar file
-    my @cmd = ("tar", "-xzf", "$confFileDir/$archive", "$tarDir/$file", "-O"); 
     my %names = (
 	dir	=> $confFileDir,
 	archive => $archive,
@@ -575,8 +610,10 @@ sub parse_files
     my %callbacks;
 
     if ($database ne 'mongodb')  {
+	
 	# Getting the SQL statements
-	my %insertStatements = SQLStatements('insert');
+	my %insertStatements = SQLStatements('insert', $database);
+	
 	while (my ($k, $v) = each (%insertStatements)) {
 	    if ($k ne 'assess') {
 		$data{$k} = $dbh->prepare($v); 
@@ -591,9 +628,8 @@ sub parse_files
 	    CallbackData 	=> \%data,
 	);
     }  else  {
+	
 	$data{assess} = $dbh->get_collection("assess");
-	$data{assessId} = MongoDB::OID->new->to_string;
-
 	%callbacks = (
 	    InitialCallback 	=> \&initMongo,
 	    MetricCallback 	=> \&metricMongo,
@@ -617,38 +653,33 @@ sub init
 {
     my ($details, $data) = @_;
     
-    # Getting the SQL statements
-    my %insertStatements = SQLStatements('insert');
-    my $insert = $insertStatements{assess};
-    if ($insert =~ /^(.*?)\(\?/s) {
-	$insert =  $1 . "(\'$details->{uuid}\', \'$data->{pkgName}\', 
-			\'$data->{pkgVer}\', \'$details->{tool_name}\', 
-			\'$details->{tool_version}\', \'$data->{plat}\');" ; 
-    }
-
-    my $check = $data->{db}->do($insert);
-    if ($check < 0)  {
-	die "Unable to insert\n";
-    }
+    my $insert = justPrint(0, $data->{name}, 'assess', $details->{uuid}, $data->{pkgName}, 
+                    $data->{pkgVer}, $details->{tool_name}, $details->{tool_version}, 
+		    $data->{plat});
+    if ($insert) {
+	my $check = $data->{db}->do($insert);
+	if ($check < 0)  {
+	    die "Unable to insert\n";
+	}
     
-    $data->{assessId} = $data->{db}->last_insert_id("", "", "assess", "");
-    $data->{toolName} = $details->{tool_name};
-    $data->{SQL} = 'SQL';
+	$data->{assessId} = $data->{db}->last_insert_id("", "", "assess", "");
+	$data->{toolName} = $details->{tool_name};
+    	$data->{SQL} = 'SQL';
+    }
     return 0;
 }
 
 sub metric
 {
     my ($metric, $data) = @_;
-    
-    my ($strVal, $startLine, $endLine) = ('NULL', undef, undef);
+    my ($strVal, $startLine, $endLine) = (undef, undef, undef);
 
-    my $classname = 'NULL';
+    my $classname = undef;
     if (exists $metric->{Class})  {
 	$classname = $metric->{Class};
     }
     
-    my $method_name = 'NULL';
+    my $method_name = undef;
     if (exists $metric->{Method})  {
 	$method_name = $metric->{Method};
     }
@@ -657,6 +688,10 @@ sub metric
 	my $check = $data->{metrics}->execute($data->{assessId}, $metric->{MetricId},
 		     $metric->{SourceFile}, $classname, $method_name, $metric->{Type},
 		     $strVal, $metric->{Value});
+	
+	justPrint(0, $data->{name}, 'metrics', $data->{assessId}, $metric->{MetricId},
+			$metric->{SourceFile}, $classname, $method_name, $metric->{Type},
+			$strVal, $metric->{Value});
     
 	if ($check < 0)  {
 	    die "Unable to insert\n";
@@ -668,6 +703,10 @@ sub metric
 		     $metric->{SourceFile}, $classname, $method_name, $metric->{Type},
 		     $metric->{Value}, $strVal);
 	
+	justPrint(0, $data->{name}, 'metrics', $data->{assessId}, $metric->{MetricId},
+			$metric->{SourceFile}, $classname, $method_name, $metric->{Type},
+			$metric->{Value}, $strVal);
+	
 	if ($check < 0)  {
 	    die "Unable to insert\n";
 	}
@@ -675,7 +714,10 @@ sub metric
 
     my $check = $data->{functions}->execute($data->{assessId}, $metric->{SourceFile},
 		 $classname, $method_name, $startLine, $endLine);
-    
+	
+    justPrint(0, $data->{name}, 'functions', $data->{assessId}, $metric->{SourceFile},
+                     $classname, $method_name, $startLine, $endLine);
+
     if ($check < 0)  {
 	die "Unable to insert\n";
     }
@@ -698,15 +740,23 @@ sub bug
 	foreach my $method (@{$bug->{Methods}}) {    	
 	    my $check = $data->{methods}->execute($data->{assessId}, $bug->{BugId},
 			$method->{MethodId}, $method->{primary}, $method->{name});
+	    
+	    justPrint(0, $data->{name}, 'methods', $data->{assessId}, $bug->{BugId},
+			    $method->{MethodId}, $method->{primary}, $method->{name});
+	    
 	    if ($check < 0)  {
 		die "Unable to insert\n";
 	    }	
 	}
 
     } else  {
-	my ($methodId, $primary, $name) = (-1, undef, 'NULL');
+	my ($methodId, $primary, $name) = (-1, undef, undef);
 	my $check = $data->{methods}->execute($data->{assessId}, $bug->{BugId},
 		    $methodId, $primary, $name);
+	    
+	justPrint(0, $data->{name}, 'methods', $data->{assessId}, $bug->{BugId},
+			$methodId, $primary, $name);
+	
 	if ($check < 0)  {
 	    die "Unable to insert\n";
 	}	
@@ -719,7 +769,7 @@ sub bug
 	foreach my $location ( @$locations )  {
 	
 	    my ($loc_start_col, $loc_end_col, $loc_expla, $loc_start_line
-		    , $loc_end_line) = (undef, undef, 'NULL', undef, undef); 
+		    , $loc_end_line) = (undef, undef, undef, undef, undef); 
 	    
 	    if (exists $location->{StartLine})  {
 		$loc_start_line = $location->{StartLine};
@@ -745,38 +795,42 @@ sub bug
 			$location->{LocationId}, $location->{primary}, $location->{SourceFile}, 
 			$loc_start_line, $loc_end_line, $loc_start_col, $loc_end_col, $loc_expla);
 	    
+	    justPrint(0, $data->{name}, 'locations', $data->{assessId}, $bug->{BugId},
+	                    $location->{LocationId}, $location->{primary}, $location->{SourceFile},
+			    $loc_start_line, $loc_end_line, $loc_start_col, $loc_end_col, $loc_expla);	    
+	    
 	    if ($check < 0)  {
 		die "Unable to insert\n";
 	    }
 	}
     }
     
-    my $bug_code = 'NULL';
+    my $bug_code = undef;
     if (exists $bug->{BugCode})  {
 	$bug_code = $bug->{BugCode};
     }
 
-    my $bug_group = 'NULL';
+    my $bug_group = undef;
     if (exists $bug->{BugGroup})  {
 	$bug_group = $bug->{BugGroup};
     }
     
-    my $bug_rank = 'NULL';
+    my $bug_rank = undef;
     if (exists $bug->{BugRank})  {
 	$bug_rank = $bug->{BugRank};
     }
     
-    my $bug_sev = 'NULL';
+    my $bug_sev = undef;
     if (exists $bug->{BugSeverity})  {
 	$bug_sev = $bug->{BugSeverity};
     }
     
-    my $res_sug = 'NULL';
+    my $res_sug = undef;
     if (exists $bug->{ResolutionSuggestion})  {
 	$res_sug = $bug->{ResolutionSuggestion};
     }
     
-    my $classname = 'NULL';
+    my $classname = undef;
     if (exists $bug->{ClassName})  {
 	$classname = $bug->{ClassName};
     }
@@ -786,17 +840,25 @@ sub bug
 	    my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
 			    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
 			    $res_sug, $classname, $cweid);
+	    
+	    justPrint(0, $data->{name}, 'weaknesses', $data->{assessId}, $bug->{BugId},
+	                    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
+			    $res_sug, $classname, $cweid);	    
+	    
 	    if ($check < 0)  {
 		die "Unable to insert\n";
 	    }
 	}
-    
     } else  {
-
-	    my $cweid = 'NULL';
+	    my $cweid = undef;
 	    my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
 			    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
 			    $res_sug, $classname, $cweid);
+	    
+	    justPrint(0, $data->{name}, 'weaknesses', $data->{assessId}, $bug->{BugId},
+	                    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
+			    $res_sug, $classname, $cweid);	    
+	    
 	    if ($check < 0)  {
 		die "Unable to insert\n";
 	    }
@@ -826,18 +888,17 @@ sub metricMongo
     my ($metric, $data) = @_;
     
     $data->{bug} = 1;
-    my $classname = 'NULL';
+    my $classname = undef;
     if (exists $metric->{Class})  {
         $classname = $metric->{Class};
     }
 
-    my $method_name = 'NULL';
+    my $method_name = undef;
     if (exists $metric->{Method})  {
         $method_name = $metric->{Method};
     }
 
-    my %metricInstance = (  assessId     	=> $data->{assessId},
-			    assessUuid   	=> $data->{assessUuid},
+    my %metricInstance = (  assessUuid   	=> $data->{assessUuid},
 			    pkgShortName 	=> $data->{pkgName},
 			    pkgVersion   	=> $data->{pkgVer},
 			    toolType     	=> $data->{toolName},
@@ -867,32 +928,32 @@ sub bugMongo
     my ($bug, $data) = @_;
     
     $data->{bug} = 1;
-    my $bug_code = 'NULL';
+    my $bug_code = undef;
     if (exists $bug->{BugCode})  {
         $bug_code = $bug->{BugCode};
     }
 
-    my $bug_group = 'NULL';
+    my $bug_group = undef;
     if (exists $bug->{BugGroup})  {
         $bug_group = $bug->{BugGroup};
     }
 
-    my $bug_rank = 'NULL';
+    my $bug_rank = undef;
     if (exists $bug->{BugRank})  {
 	$bug_rank = $bug->{BugRank};
     }
 
-    my $bug_sev = 'NULL';
+    my $bug_sev = undef;
     if (exists $bug->{BugSeverity})  {
 	$bug_sev = $bug->{BugSeverity};
     }
     
-    my $res_sug = 'NULL';
+    my $res_sug = undef;
     if (exists $bug->{ResolutionSuggestion})  {
 	$res_sug = $bug->{ResolutionSuggestion};
     }
 
-    my $classname = 'NULL';
+    my $classname = undef;
     if (exists $bug->{ClassName})  {
 	$classname = $bug->{ClassName};
     }
@@ -938,8 +999,7 @@ sub bugMongo
 	}
     }
 
-    my %bugInstance = ( assessId     	=> $data->{assessId},
-			assessUuid   	=> $data->{assessUuid},
+    my %bugInstance = ( assessUuid   	=> $data->{assessUuid},
 			pkgShortName 	=> $data->{pkgName},
 			pkgVersion   	=> $data->{pkgVer},
 			toolType     	=> $data->{toolName},
@@ -984,8 +1044,7 @@ sub finish
 	    delete $data->{scarf};
 	}  elsif (($data->{db_count} != 0 && exists $data->{init}) 
 			|| $data->{db_commits} eq 'INF')  {
-	    $data->{assess}->insert({  'assessId'      => $data->{assessId},
-	                                   'assessUuid'    => $data->{assessUuid},
+	    $data->{assess}->insert({      'assessUuid'    => $data->{assessUuid},
 					   'pkgShortName'  => $data->{pkgName},
 					   'pkgVersion'    => $data->{pkgVer},
 					   'toolType'      => $data->{toolName},
@@ -997,6 +1056,19 @@ sub finish
     return 0;
 }
 
+###################################### Testing the authetication data #######################################
+sub TestConnection
+{
+    my ($name, $type, $host, $port, $user, $pass) = @_;
+    my $dbh = openDatabase($name, $type, $host, $port, $user, $pass);
+    
+    # mongodb only authenticates when you try to access the database
+    if ($type eq 'mongodb') {
+	$dbh->collection_names;
+    }
+    print "Connection successful\n";
+}
+
 ########################################## Opening the database #############################################
 sub openDatabase
 {
@@ -1005,8 +1077,8 @@ sub openDatabase
     if ($type eq 'postgres')  {
 	my $driver = "Pg";
         my $dsn = "DBI:$driver:dbname=$name;host=$host;port=$port";
-        my $dbh = DBI->connect($dsn, $user, $pass, { RaiseError => 1, AutoCommit => 0, async => 1, fsync => 0 })
-                       or die $DBI::errstr;
+        my $dbh = DBI->connect($dsn, $user, $pass, { RaiseError => 1, AutoCommit => 0, 
+				    async => 1, fsync => 0 }) or die $DBI::errstr;
 	
 	#Returning the database handle
 	return $dbh;
@@ -1016,14 +1088,11 @@ sub openDatabase
 	my $url;
 	if (defined $user and defined $pass) {
 	    $url = "mongodb://$user:$pass@" . $host . ":$port/$name";
-	        
 	} else  {
 	    $url = "mongodb://" . $host . ":$port/$name";
 	}
-	
 	$client = MongoDB->connect($url);
 	$dbh = $client->get_database("$name");
-	
 	# Returning the database handle
 	return $dbh;
     
@@ -1055,8 +1124,10 @@ sub ProcessTableOptions
     
     if (defined $delete) {
         delete_tables($name , $database, $host, $port, $user, $pass, @table_names);
+	justPrint('delete', $database);
     } elsif  (defined ($create))  {
         create_tables($name , $database, $host, $port, $user, $pass, @table_names);
+	justPrint('create', $database);
     }
 }
 
@@ -1067,7 +1138,7 @@ sub delete_tables
     my $dbh = openDatabase($name, $database, $host, $port, $user, $pass);
     $dbh->{PrintError} = 0;
     $dbh->{RaiseError} = 0;
-    my ($delete) = SQLStatements('delete');
+    my ($delete) = SQLStatements('delete', $database);
     my @errors;
     foreach my $table ( @table_names ) {	
 	my $statement = $delete . "$table;";
@@ -1076,45 +1147,30 @@ sub delete_tables
     }
     $dbh->disconnect;
     if (@errors) {
-	print @errors;
+	local $" = "\n";
+	print "@errors\n";
 	exit 1;
     }
-    exit 0;
 }
 
 ############################# Method to create tables in a specific SQL database ####################################
 sub create_tables
 {
-
     # Required private variable for the subroutine
     my ($name , $database, $host, $port, $user, $pass, @table_names) = @_;
     my $dbh = openDatabase($name, $database, $host, $port, $user, $pass);
     my $counter = 0;
     my $create;
     my $check;
-    my $primaryKey = "BIGSERIAL PRIMARY KEY";
-
-    if ($database eq 'mariadb' || $database eq 'mysql')  {
-	$primaryKey = "INT PRIMARY KEY AUTO_INCREMENT";
-    }
+    my %tables = SQLStatements('create', $database);
     
-    if ($database eq 'sqlite')  {
-	$primaryKey = "integer PRIMARY KEY AUTOINCREMENT";
-    }
-
-    my %tables = SQLStatements('create');
-    
-    foreach my $table (@table_names) {
+    foreach my $tableName (@table_names) {
 	
-	my $create = $tables{$table};
-	if ($table eq 'assess') {
-	    $create = join($primaryKey, split(/\?/, $tables{$table}, 2));
-	}
-	
+	my $create = $tables{$tableName};
 	$check = $dbh->do($create);
 	# Checking whether the table is successfully created
 	if ($check < 0)  {
-	   print "Table \'$table\' not created\n$DBI::errstr\n";
+	   print "Table \'$tableName\' not created\n$DBI::errstr\n";
 	}
 	$dbh->commit();  
     }
@@ -1122,8 +1178,8 @@ sub create_tables
 }
     
 ###################################### reading the conf file #####################################################
+
 # HasValue - return true if string is defined and non-empty
-#
 sub HasValue
 {
     my ($s) = @_;
