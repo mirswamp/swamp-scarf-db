@@ -33,7 +33,6 @@ use MongoDB;
 sub main
 {
     my %options = ProcessOptions();
-    
     my ($name, $database) = 
 	($options{db_name}, $options{db_type});
     
@@ -41,13 +40,16 @@ sub main
 	($options{pkg_name}, $options{pkg_version}, $options{platform});
    
     # printing out the execution commands
-    if (defined $options{just_print})  {
-	defined $options{create_tables} and justPrint('create', $options{db_type});
-	defined $options{delete_tables} and justPrint('delete', $options{db_type});
-	defined $options{scarf} and justPrint('insert', $options{db_type});
+    if (defined $options{just_print} && defined $options{create_tables})  {
+	justPrint('SQL', 'create', $options{db_type});
 	exit 0;
     }
-   
+
+    if (defined $options{just_print} && defined $options{delete_tables})  {
+	justPrint('SQL', 'delete', $options{db_type});
+	exit 0;
+    }
+
     my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions");
     
     # Processing the table options depending on the command line arguments
@@ -67,6 +69,16 @@ sub main
 	exit 0;
     }
 
+    # setting the value of the parameter to be used in parse_files
+    my $insert = 0;
+    if (defined $options{scarf}) {
+	if (defined $options{just_print}) {
+	    $insert = undef;
+	} else {
+	    $insert = 1;
+	}
+    }
+
     # Saving SCARF results
     if ($options{scarf} =~ /^.*.conf$/) {
 	my ($retVal, %names) = findScarf($options{scarf});
@@ -74,7 +86,9 @@ sub main
 	    # Parsing the files
 	    parse_files($name, $pkg_name, $pkg_ver, $plat, $database,
 			$options{db_host}, $options{db_port}, $options{db_username}, 
-			$options{db_password}, $options{db_commits}, \%names); 
+			$options{db_password}, $options{db_commits}, \%names,
+			$options{just_print}, $options{verbose}, $insert,
+			$options{assess_id}, $options{output_file}); 
 	
 	} else {
 	    print "Please fix the above errors\n";
@@ -84,7 +98,11 @@ sub main
         # Parsing the files
 	parse_files($name, $pkg_name, $pkg_ver, $plat, $database,
 		$options{db_host}, $options{db_port}, $options{db_username}, 
-		$options{db_password}, $options{db_commits}, \$options{scarf}); 
+		$options{db_password}, $options{db_commits}, \$options{scarf}, 
+		$options{just_print}, $options{verbose}, $insert,
+		$options{assess_id}), $options{output_file}; 
+    } else {
+	print "Please input the name of the scarf file with correct extension\n";
     }
 }
 
@@ -111,6 +129,9 @@ sub ProcessOptions
 	db_username	=> undef,
 	db_password	=> undef,
 	test_auth	=> undef,
+	verbose		=> undef,
+	assess_id	=> undef,
+	output_file	=> undef,
 	);
 
     # for options that contain a '-', make the first value be the
@@ -130,7 +151,7 @@ sub ProcessOptions
 	"db_port|db-port=s",
 	"db_commits|db-commits=s",
 	"db_name|db-name=s",
-	"scarf|S=s",
+	"scarf|s=s",
 	"pkg_name|pkg-name=s",
 	"pkg_version|pkg-version=s",
 	"platform=s",
@@ -138,6 +159,9 @@ sub ProcessOptions
 	"db_username|db-username=s",
 	"db_password|db-password=s",
 	"test_auth|test-auth!",
+	"assess_id|assess-id=s",
+	"verbose|V!",
+	"output_file|output-file=s",
     );
 
     
@@ -315,44 +339,49 @@ sub printHelp
     my $progname = $0;
     print STDERR <<EOF;
 
-    Usage: $progname [options] [value] 
-    Parse the given XML SCARF file and save the results in any of the
-    following databases: MongoDB, PostgreSQL, MariaDB, MySQL or SQLite
+Usage: $progname [options] [value] 
+Parse the given XML SCARF file and save the results in any of the
+following databases: MongoDB, PostgreSQL, MariaDB, MySQL or SQLite
 
-Options:
+options:
     -h [ --help ]               print this message
     -v [ --version ]            print version
-    --auth-conf			path to the conf file containing the username
+    --auth-conf <value>		path to the conf file containing the username
 				and password for database
-    --conf	  		path to the conf file containing the database 
+    --conf <value>  		path to the conf file containing the database 
 				parameters
-    --db-type		   	this can be any of the databases supported, 
+    --db-type <value>	   	this can be any of the databases supported, 
 				default: mongodb
-    --db-host			hostname of the DBMS server, default: localhost
+    --db-host <value>		hostname of the DBMS server, default: localhost
     --create-tables		creates tables for SQL databases
     --delete-tables		deletes tables for SQL databases
-    --db-port			port on which the DBMS server listens on, 
+    --db-port <value>		port on which the DBMS server listens on, 
 				default: 27017 (MongoDB), 5432 (PostgreSQL) 
 				or 3306 (MySQL, MariaDB),
-    --db-commits		max number of weaknesses to commit at once
+    --db-commits <value>	max number of weaknesses to commit at once
 				default: INF(infinity) for SQL databases,
 				1500 for MongoDB
-    --db-name			name of the db in which you want to save the 
+    --db-name <value>		name of the db in which you want to save the 
 				scarf results. For eg: test, scarf, swamp etc. 
 				MongoDB and SQLite creates the db if it does not 
 				already exist
-    -S [ --scarf ]              path to the SCARF results XML 
+    -s [ --scarf ] <value>      path to the SCARF results XML 
 				(parsed_results.xml) or parsed_results.conf file
-    --pkg-name			name of the package that was assessed
-    --pkg-version		version of the package that was assessed
-    --platform			platform the assessment was run on
+    --pkg-name <value>		name of the package that was assessed
+    --pkg-version <value>	version of the package that was assessed
+    --platform <value>		platform the assessment was run on
     -n [ --just-print ]		prints out create, insert or delete statements 
 				depending the other argument passed with this 
 				option
+    -V [ --verbose ]		inserts and print out the insert statements for 
+				the given SCARF file
+    --assess-id <value>		unique assessId for SQL databases
+    --output-file <value> 	name of the file to store data insertion, deletion 
+				or creation commands, default: STDOUT
 
-Authentication Options:
-    --db-username 		Username for DBMS
-    --db-password		Password for DBMS
+Authentication options:
+    --db-username <value>	Username for DBMS
+    --db-password <value>	Password for DBMS
     --test-auth			Verifies authentication credentials for the 
 				database type
 
@@ -363,91 +392,304 @@ EOF
 #################################### Print version of the program #################################
 sub printVersion
 {
-    my $version = '0.9.0 (August 2, 2016)';
+    my $version = '0.8.5 (August 5, 2016)';
     my $progname = $0;
     print "$progname version $version\n";
 }
 
-#################################### Printing the database commands #################################
+#################################### Printing the database commands ################################
 sub justPrint
 {
-    my ($operation, $type, $stmtType, @values) = @_;
+    my ($type, $operation, $dbType, $stmtType, $outputFile, $count, $values) = @_;
     my $retValue = 0;
-    
-    if (defined ($stmtType) && @values) {
-	my %statements = SQLStatements('insert', $type);
-	my @insertValues = @values;
-	if ($statements{$stmtType} =~ /^(.*?)\(\?/s) { 
-	
-	    if ($stmtType eq 'assess') {
-		foreach my $value (@insertValues) {
-		    if (!defined $value) {
-			$value = '';
-		    } 	
-		}
-		my $insert = join("\', \'", @insertValues);
-		$insert = "$1 \(\'$insert\'\);";
-		$retValue = $insert;
-	    } 
-	
-	    foreach my $value (@values) {
-		if (!defined $value) {
-		    $value = 'null';
-		} else {
-		    $value = "\'$value\'";
-		}
-	    }
-	    my $insert = join(", ", @values);
-	    $insert = "$1 \($insert\);";
-	    print "$insert\n";
-	}
+    my $fh;
+    my $success = -1;
+    if (defined ($outputFile)) { 
+	$success = open ($fh, '>>', $outputFile) or die "Could not open file $outputFile $!"; 
     } else {
-	print "\n";
-	if ($operation ne 'delete') {
-	    my %statements = SQLStatements($operation, $type);
-	    $operation = uc($operation);
-	    while (my ($k, $v) = each %statements) {
-		print "$v\n";
+	$fh = *STDOUT;
+    }
+    
+    if ($type eq 'SQL') {
+	my $find = "'";
+	my $replace = "''";
+	$find = quotemeta $find;
+	if (defined ($stmtType) && defined($values)) {
+	   my %statements = SQLStatements('insert', $dbType);
+	    my @insertValues = @$values;
+	    if ($statements{$stmtType} =~ /^(.*?)\(\?/s) { 
+	
+		if ($stmtType eq 'assess') {
+		    foreach my $value (@insertValues) {
+			if (!defined $value) {
+			    $value = '';
+			} 	
+		    }
+		    my $insert = join("\', \'", @insertValues);
+		    $insert = "$1 \(\'$insert\'\);";
+		    $retValue = $insert;
+		} 
+	
+		if ($operation eq 'print') {
+		    foreach my $value (@$values) {
+			if (!defined $value) {
+			    $value = 'null';
+			} else {
+			    $value =~ s/$find/$replace/g;		
+			    $value = "\'$value\'";
+			}
+		    }
+		    my $insert = join(", ", @$values);
+		    $insert = "$1 \($insert\);";
+		    print $fh "$insert\n";
+		}
 	    }
 	} else {
-	    my ($deleteStatement, @tableNames) = SQLStatements($operation, $type);
-	    $operation = uc($operation);
-	    foreach my $table (@tableNames) {
-		print "$deleteStatement $table;\n";
+	    if ($operation ne 'delete') {
+		my %statements = SQLStatements($operation, $dbType);
+		$operation = uc($operation);
+		while (my ($k, $v) = each %statements) {
+		   print $fh "$v\n";
+		}
+	    } else {
+		my ($deleteStatement, @tableNames) = SQLStatements($operation, $dbType);
+		$operation = uc($operation);
+		foreach my $table (@tableNames) {
+		    print $fh "$deleteStatement $table;\n";
+		}
 	    }
 	}
-	print "\n";
+    } elsif ($type =~ /^NOSQL.*$/) {
+	my $insert = NOSQLStatements('insert');
+	my $data;
+	if ($$count == 0) {
+	    print $fh "[\n";
+	}
+	if ($insert =~ /^(.*?)\(\[/s) { 	    
+	    
+	    # printing the data
+	    if ($$count == 0) {
+		print $fh "\t{\n"; 
+	    } else {
+		print $fh ",\n\t{\n"; 
+	    }
+	    if ($type eq 'NOSQLbug') {
+		$data = jsonBug($values);
+	    } elsif ($type eq 'NOSQLmetric') {
+		$data = jsonMetric($values);
+	    }
+	    print $fh $data;
+	    print $fh "\n\t}";
+	}
     }
+    $$count++;
+    close $fh unless $success == -1;
     return $retValue;
+}
+################################## Json writting subroutine ###############################
+sub jsonMetric
+{
+
+    my ($values) = @_;
+    my $data;
+    my $string;    
+    my $find = "\n";
+    my $replace = "\\n";
+    my $findquotes = "\"";
+    my $replacequotes = '\"';
+    $find = quotemeta $find;
+    $findquotes = quotemeta $findquotes;
+    
+    # printing the bugId
+    while (my ($k, $v) = each %$values) {
+        if ($k eq 'MetricId') {
+	    $string = "\t\t\"$k\" : $v";
+	}
+    }
+
+    # looking for other values
+    while (my ($k, $v) = each %$values) {
+        my $count = 0;
+        defined $v or $v = 'null';
+	$v =~ s/$find/$replace/g;		
+	$v =~ s/$findquotes/$replacequotes/g;		
+
+        if ($v ne 'null') {
+	    if ($v & ~$v) {
+		$v = "\"$v\"";
+	    }
+	    if ($v eq '') {
+		$v = "\"$v\"";
+	    }
+	}
+	if ($k ne 'MetricId') {
+	    $string = "$string,\n\t\t\"$k\" : $v";
+	}
+    }
+    return $string;
+}
+
+################################## Json writting subroutine ###############################
+sub jsonBug
+{
+
+    my ($values) = @_;
+    my $data;
+    my $string;    
+    my $find = "\n";
+    my $replace = "\\n";
+    my $findquotes = "\"";
+    my $replacequotes = '\"';
+    $find = quotemeta $find;
+    $findquotes = quotemeta $findquotes;
+    
+    # printing the bugId
+    while (my ($k, $v) = each %$values) {
+        if ($k eq 'BugId') {
+	    $string = "\t\t\"$k\" : $v";
+	}
+    }
+
+    # looking for other values
+    while (my ($k, $v) = each %$values) {
+        my $count = 0;
+        defined $v or $v = 'null';
+	$v =~ s/$find/$replace/g;		
+	$v =~ s/$findquotes/$replacequotes/g;		
+
+        if (ref($v) ne 'ARRAY' && $v ne 'null') {
+	    if ($v & ~$v) {
+		$v = "\"$v\"";
+	    }
+	    if ($v eq '') {
+		$v = "\"$v\"";
+	    }
+	}
+	if ($k eq 'Methods') {
+	    $string = "$string,\n\t\t\"$k\" : [";
+	    if (scalar @$v != 0) {
+	        foreach my $val (@$v) {
+		    if ($count != 0) {
+		        $string = "$string,";	
+		    } 
+		    $data = jsonHelper($val, 'MethodId');
+		    $string = $string . $data;
+		    $count++;
+		} 
+	    } 
+	    $string = "$string\n\t\t]";
+	}  elsif ($k eq 'Location') {
+	    $string = "$string,\n\t\t\"$k\" : [";
+	    foreach my $val (@$v) {
+	        if ($count != 0) {
+		    $string = "$string,";	
+		} 
+		$data = jsonHelper($val, 'LocationId');
+		$string = $string . $data;
+		$count++;
+	    }
+	    $string = "$string\n\t\t]";
+	} elsif ($k ne 'BugId') {
+	    $string = "$string,\n\t\t\"$k\" : $v";
+	}
+    }
+    return $string;
+}
+
+
+################################## Json helper subroutine #################################
+sub jsonHelper
+{
+    my ($val, $keyVal) = @_;
+    my $find = "\n";
+    my $replace = "\\n";
+    my $findquotes = "\"";
+    my $replacequotes = '\"';
+    $find = quotemeta $find;
+    $findquotes = quotemeta $findquotes;
+    
+    my $string = "\n\t\t\t{\n";
+			    
+    if (ref($val) eq 'HASH') {
+	while (my ($key, $value) = each %$val) {
+	    if ($key eq $keyVal) {
+		$value =~ s/$find/$replace/g;		
+		$value =~ s/$findquotes/$replacequotes/g;		
+		$string = "$string \t\t\t\t\"$key\" : $value";
+	    }
+	}		    	    
+    
+	while (my ($key, $value) = each %$val) {
+	    if (ref($value) ne 'ARRAY' && $value ne 'null') {
+		$value =~ s/$find/$replace/g;		
+		$value =~ s/$findquotes/$replacequotes/g;		
+		if ($key eq 'primary') {
+		    if ($value == 0) {
+			$value = 'false';
+		    } else {
+			$value = 'true';
+		    }
+		} elsif ($value & ~$value) {
+		    $value = "\"$value\"";
+		} 
+		if ($value eq '') {
+		    $value = "\"$value\"";
+		}
+	    }
+	    if ($key ne $keyVal) {
+		$string = "$string,\n\t\t\t\t\"$key\" : $value";
+	    }
+	}
+    }
+    $string = "$string \n\t\t\t}";
+    return $string;
+}
+
+#################################### SQL database commands #################################
+sub NOSQLStatements
+{
+    my ($operation) = @_; 
+    my %statements = (
+        insert	=> "db.assess.insert([])",
+	drop	=> "db.assess.drop()",
+    );
+
+    if ($operation eq 'insert')  {
+        return ($statements{insert});
+    } elsif ($operation eq 'delete') {
+        return ($statements{drop});
+    } 
 }
 
 
 #################################### SQL database commands #################################
 sub SQLStatements
 {
-	my ($operation, $db_type) = @_; 
-	my %insertStatements = (
-	    assess	=>  "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, " .
-			    "toolversion, plat) VALUES (?, ?, ?, ?, ?, ?);", 
-	    weaknesses	=> "INSERT INTO weaknesses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
-	    locations	=> "INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);", 
-	    methods	=> "INSERT INTO methods VALUES (?, ?, ?, ?, ?);",
-	    metrics	=> "INSERT INTO metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
-	    functions	=> "INSERT INTO functions VALUES (?, ?, ?, ?, ?, ?);",
-	);
+    my ($operation, $db_type) = @_; 
+    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions");
+    my %insertStatements = (
+        assess      	=> "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, " .
+			    "toolversion, plat) VALUES (?, ?, ?, ?, ?, ?);",
+	assess1     	=> "INSERT INTO assess VALUES (?, ?, ?, ?, ?, ?, ?);",
+	weaknesses 	=> "INSERT INTO weaknesses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+	locations   	=> "INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+	methods     	=> "INSERT INTO methods VALUES (?, ?, ?, ?, ?);",
+	metrics     	=> "INSERT INTO metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
+	functions   	=> "INSERT INTO functions VALUES (?, ?, ?, ?, ?, ?);",	
+    );
 
-	my $primaryKey = "BIGSERIAL PRIMARY KEY";
+    my $primaryKey = "BIGSERIAL PRIMARY KEY";
 
-	if ($db_type eq 'mariadb' || $db_type eq 'mysql')  {
-	    $primaryKey = "INT PRIMARY KEY AUTO_INCREMENT";
-	}
+    if ($db_type eq 'mariadb' || $db_type eq 'mysql')  {
+        $primaryKey = "INT PRIMARY KEY AUTO_INCREMENT";
+    }
     
-	if ($db_type eq 'sqlite')  {
-	    $primaryKey = "integer PRIMARY KEY AUTOINCREMENT";
-	}
+    if ($db_type eq 'sqlite')  {
+        $primaryKey = "integer PRIMARY KEY AUTOINCREMENT";
+    }
 
-	my %createStatements = (
-	    assess	=> qq(CREATE TABLE assess ( 
+    my %createStatements = (
+        assess		=> qq(CREATE TABLE assess ( 
 			    assessId		$primaryKey,
 			    assessUuid		text			NOT NULL,
 			    pkgShortName	text,
@@ -457,7 +699,7 @@ sub SQLStatements
 			    plat		text
 			    );),
 	    
-	    weaknesses	=> qq(CREATE TABLE weaknesses (
+        weaknesses	=> qq(CREATE TABLE weaknesses (
 			    assessId		integer			NOT NULL,
 			    bugId		integer			NOT NULL,
 			    bugCode		text,
@@ -514,17 +756,15 @@ sub SQLStatements
 			    startLine		integer,
 			    endLine		integer
 			    );),
-	);
+    );
 
-	my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions");
-	
-	if ($operation eq 'create')  {
-	    return (%createStatements);
-	} elsif ($operation eq 'insert')  {
-	    return (%insertStatements);
-	} elsif ($operation eq 'delete') {
-	    return ("DROP TABLE ", @tableNames);
-	} 
+    if ($operation eq 'create')  {
+        return (%createStatements);
+    } elsif ($operation eq 'insert')  {
+        return (%insertStatements);
+    } elsif ($operation eq 'delete') {
+        return ("DROP TABLE ", @tableNames);
+    } 
 }
 
 ################################# Finds the scarf file in the given directory ################################
@@ -582,7 +822,8 @@ sub parse_files
 {
     # Getting the name of the file and type
     my ($name, $pkg_name, $pkg_ver, $plat, $database, $host, $port, 
-	$user, $pass, $commits, $names) = @_;
+	$user, $pass, $commits, $names, $justprint, $verbose, $insert,
+	$assessId, $outputFile) = @_;
     my $id;
     my %data = (
 	pkgName		=> $pkg_name,
@@ -591,11 +832,21 @@ sub parse_files
 	db_count	=> 0,
 	name		=> $database,
 	db_commits	=> $commits,
+	justprint	=> $justprint,
+	verbose		=> $verbose,
+	insert		=> $insert,
+	assessId	=> $assessId,
+	output 		=> $outputFile,
+	count 		=> 0,
     );
 
-    my $dbh = openDatabase($name, $database, $host, $port, $user, $pass);
-    $data{db} = $dbh;
+    my $dbh;
     
+    if ($data{verbose} || $data{insert}) {
+	$dbh = openDatabase($name, $database, $host, $port, $user, $pass);
+	$data{db} = $dbh;
+    }
+
     my $scarf;
 
     # untaring the file to a handler
@@ -612,11 +863,12 @@ sub parse_files
     if ($database ne 'mongodb')  {
 	
 	# Getting the SQL statements
-	my %insertStatements = SQLStatements('insert', $database);
-	
-	while (my ($k, $v) = each (%insertStatements)) {
-	    if ($k ne 'assess') {
-		$data{$k} = $dbh->prepare($v); 
+	if ($data{verbose} || $data{insert}) {
+	    my %insertStatements = SQLStatements('insert', $database);
+	    while (my ($k, $v) = each (%insertStatements)) {
+		if ($k ne 'assess' && $k ne 'assess1') {
+		    $data{$k} = $dbh->prepare($v); 
+		}
 	    }
 	}
 	
@@ -629,7 +881,9 @@ sub parse_files
 	);
     }  else  {
 	
-	$data{assess} = $dbh->get_collection("assess");
+	if ($data{verbose} || $data{insert}) {
+	    $data{assess} = $dbh->get_collection("assess");
+	}
 	%callbacks = (
 	    InitialCallback 	=> \&initMongo,
 	    MetricCallback 	=> \&metricMongo,
@@ -646,25 +900,36 @@ sub parse_files
     if (ref($names) eq "HASH") {
 	close $scarf;
     }
+
+
 }
 
 #################################### Subroutine to parse and save the values #######################################
 sub init
 {
     my ($details, $data) = @_;
-    
-    my $insert = justPrint(0, $data->{name}, 'assess', $details->{uuid}, $data->{pkgName}, 
-                    $data->{pkgVer}, $details->{tool_name}, $details->{tool_version}, 
-		    $data->{plat});
-    if ($insert) {
-	my $check = $data->{db}->do($insert);
-	if ($check < 0)  {
-	    die "Unable to insert\n";
-	}
-    
+
+    $data->{toolName} = $details->{tool_name};
+    $data->{SQL} = 'SQL';
+    my $insert; 
+    if ($data->{verbose} || $data->{insert}) {
+	my @values = ($details->{uuid}, $data->{pkgName}, $data->{pkgVer}, 
+		    $details->{tool_name}, $details->{tool_version}, $data->{plat});
+	$insert = justPrint('SQL', 0, $data->{name}, 'assess', $data->{output}, 
+			    \$data->{count}, \@values);
+	if ($insert) {
+	    my $check = $data->{db}->do($insert);
+	    if ($check < 0)  {
+		die "Unable to insert\n";
+	    }
 	$data->{assessId} = $data->{db}->last_insert_id("", "", "assess", "");
-	$data->{toolName} = $details->{tool_name};
-    	$data->{SQL} = 'SQL';
+	}
+    } else {
+	my @values = ($data->{assessId}, $details->{uuid}, $data->{pkgName}, 
+			$data->{pkgVer}, $details->{tool_name}, $details->{tool_version}, 
+			$data->{plat});
+	$insert = justPrint('SQL', 'print', $data->{name}, 'assess1', $data->{output}, 
+			    \$data->{count}, \@values);
     }
     return 0;
 }
@@ -685,47 +950,68 @@ sub metric
     }
 
     if ($metric->{Value} =~ /^[0-9]+$/)  {
-	my $check = $data->{metrics}->execute($data->{assessId}, $metric->{MetricId},
-		     $metric->{SourceFile}, $classname, $method_name, $metric->{Type},
-		     $strVal, $metric->{Value});
 	
-	justPrint(0, $data->{name}, 'metrics', $data->{assessId}, $metric->{MetricId},
+	if (defined($data->{verbose}) || defined($data->{insert})) {
+	    my $check = $data->{metrics}->execute($data->{assessId}, $metric->{MetricId},
 			$metric->{SourceFile}, $classname, $method_name, $metric->{Type},
 			$strVal, $metric->{Value});
-    
-	if ($check < 0)  {
-	    die "Unable to insert\n";
+	
+	    if ($check < 0)  {
+		die "Unable to insert\n";
+	    }
+	}
+	
+	if (defined($data->{verbose}) || defined($data->{justprint})) {
+	    my @values = ($data->{assessId}, $metric->{MetricId}, $metric->{SourceFile}, 
+			$classname, $method_name, $metric->{Type}, $strVal, $metric->{Value});
+	    justPrint('SQL', 'print', $data->{name}, 'metrics', $data->{output}, 
+			\$data->{count}, \@values);
 	}
     
     } else  {
 	$strVal = undef;
-	my $check = $data->{metrics}->execute($data->{assessId}, $metric->{MetricId},
-		     $metric->{SourceFile}, $classname, $method_name, $metric->{Type},
-		     $metric->{Value}, $strVal);
 	
-	justPrint(0, $data->{name}, 'metrics', $data->{assessId}, $metric->{MetricId},
+	if (defined($data->{verbose}) || defined($data->{insert})) {
+	    my $check = $data->{metrics}->execute($data->{assessId}, $metric->{MetricId},
 			$metric->{SourceFile}, $classname, $method_name, $metric->{Type},
 			$metric->{Value}, $strVal);
 	
+	    if ($check < 0)  {
+		die "Unable to insert\n";
+	    }
+	}
+
+	if (defined($data->{verbose}) || defined($data->{justprint})) {
+	    my @values = ($data->{assessId}, $metric->{MetricId}, $metric->{SourceFile}, 
+			$classname, $method_name, $metric->{Type}, $metric->{Value}, $strVal);
+	    justPrint('SQL', 'print', $data->{name}, 'metrics', $data->{output}, 
+			\$data->{count}, \@values);
+	}
+    }
+
+    if (defined($data->{verbose}) || defined($data->{insert})) {
+	my $check = $data->{functions}->execute($data->{assessId}, $metric->{SourceFile},
+		    $classname, $method_name, $startLine, $endLine);
+    
 	if ($check < 0)  {
 	    die "Unable to insert\n";
 	}
     }
 
-    my $check = $data->{functions}->execute($data->{assessId}, $metric->{SourceFile},
-		 $classname, $method_name, $startLine, $endLine);
-	
-    justPrint(0, $data->{name}, 'functions', $data->{assessId}, $metric->{SourceFile},
-                     $classname, $method_name, $startLine, $endLine);
 
-    if ($check < 0)  {
-	die "Unable to insert\n";
+    if (defined($data->{verbose}) || defined($data->{justprint})) {
+	my @values = ($data->{assessId}, $metric->{SourceFile},
+		    $classname, $method_name, $startLine, $endLine);
+	justPrint('SQL', 'print', $data->{name}, 'functions', $data->{output}, 
+		    \$data->{count}, \@values);
     }
-    
-    $data->{db_count}++;
-    if ($data->{db_commits} != 'INF' && $data->{db_commits} == $data->{db_count})  {
-	$data->{db}->commit();
-	$data->{db_count} = 0;	
+
+    if (defined($data->{verbose}) || defined($data->{insert})) {
+	$data->{db_count}++;
+	if ($data->{db_commits} != 'INF' && $data->{db_commits} == $data->{db_count})  {
+	    $data->{db}->commit();
+	    $data->{db_count} = 0;	
+	}
     }
     return 0;
 }
@@ -738,28 +1024,39 @@ sub bug
     if (exists $bug->{Methods} && $length != 0)  {
 	
 	foreach my $method (@{$bug->{Methods}}) {    	
-	    my $check = $data->{methods}->execute($data->{assessId}, $bug->{BugId},
-			$method->{MethodId}, $method->{primary}, $method->{name});
+	    if (defined($data->{verbose}) || defined($data->{insert})) {
+		my $check = $data->{methods}->execute($data->{assessId}, $bug->{BugId},
+			  $method->{MethodId}, $method->{primary}, $method->{name});
 	    
-	    justPrint(0, $data->{name}, 'methods', $data->{assessId}, $bug->{BugId},
-			    $method->{MethodId}, $method->{primary}, $method->{name});
+		if ($check < 0)  {
+		    die "Unable to insert\n";
+		}	
+	    }
 	    
-	    if ($check < 0)  {
-		die "Unable to insert\n";
-	    }	
+	    if (defined($data->{verbose}) || defined($data->{justprint})) {
+		my @values = ($data->{assessId}, $bug->{BugId}, $method->{MethodId}, 
+				$method->{primary}, $method->{name});
+		justPrint('SQL', 'print', $data->{name}, 'methods', $data->{output}, 
+			    \$data->{count}, \@values);
+	    }
 	}
 
     } else  {
 	my ($methodId, $primary, $name) = (-1, undef, undef);
-	my $check = $data->{methods}->execute($data->{assessId}, $bug->{BugId},
+	if (defined($data->{verbose}) || defined($data->{insert})) {
+	    my $check = $data->{methods}->execute($data->{assessId}, $bug->{BugId},
 		    $methodId, $primary, $name);
 	    
-	justPrint(0, $data->{name}, 'methods', $data->{assessId}, $bug->{BugId},
-			$methodId, $primary, $name);
+	    if ($check < 0)  {
+		die "Unable to insert\n";
+	    }
+	}
 	
-	if ($check < 0)  {
-	    die "Unable to insert\n";
-	}	
+	if (defined($data->{verbose}) || defined($data->{justprint})) {
+	    my @values = ($data->{assessId}, $bug->{BugId}, $methodId, $primary, $name); 
+	    justPrint('SQL', 'print', $data->{name}, 'methods', $data->{output}, 
+			\$data->{count}, \@values);
+	}
     }
 
     $length = scalar @{$bug->{BugLocations}}; 
@@ -791,16 +1088,22 @@ sub bug
 		$loc_expla = $location->{Explanation};
 	    }
 	    
-	    my $check = $data->{locations}->execute($data->{assessId}, $bug->{BugId}, 
-			$location->{LocationId}, $location->{primary}, $location->{SourceFile}, 
-			$loc_start_line, $loc_end_line, $loc_start_col, $loc_end_col, $loc_expla);
+	    if (defined($data->{verbose}) || defined($data->{insert})) {
+		my $check = $data->{locations}->execute($data->{assessId}, $bug->{BugId}, 
+			    $location->{LocationId}, $location->{primary}, $location->{SourceFile}, 
+			    $loc_start_line, $loc_end_line, $loc_start_col, $loc_end_col, $loc_expla);
 	    
-	    justPrint(0, $data->{name}, 'locations', $data->{assessId}, $bug->{BugId},
-	                    $location->{LocationId}, $location->{primary}, $location->{SourceFile},
-			    $loc_start_line, $loc_end_line, $loc_start_col, $loc_end_col, $loc_expla);	    
-	    
-	    if ($check < 0)  {
-		die "Unable to insert\n";
+		if ($check < 0)  {
+		    die "Unable to insert\n";
+		}
+	    }
+
+	    if (defined($data->{verbose}) || defined($data->{justprint})) {
+		my @values = ($data->{assessId}, $bug->{BugId}, $location->{LocationId}, 
+				$location->{primary}, $location->{SourceFile}, $loc_start_line, 
+				$loc_end_line, $loc_start_col, $loc_end_col, $loc_expla);
+		justPrint('SQL', 'print', $data->{name}, 'locations', $data->{output}, 
+			    \$data->{count}, \@values);	    
 	    }
 	}
     }
@@ -837,37 +1140,51 @@ sub bug
     
     if (exists $bug->{CweIds})  {	
 	foreach my $cweid ( $bug->{CweIds} )  {  
-	    my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
+	    if (defined($data->{verbose}) || defined($data->{insert})) {
+		my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
 			    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
 			    $res_sug, $classname, $cweid);
-	    
-	    justPrint(0, $data->{name}, 'weaknesses', $data->{assessId}, $bug->{BugId},
-	                    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
-			    $res_sug, $classname, $cweid);	    
-	    
-	    if ($check < 0)  {
-		die "Unable to insert\n";
+
+		if ($check < 0)  {
+		    die "Unable to insert\n";
+		}
+	    }
+
+	    if (defined($data->{verbose}) || defined($data->{justprint})) {
+		my @values = ($data->{assessId}, $bug->{BugId}, $bug_code, $bug_group, 
+				$bug_rank, $bug_sev, $bug->{BugMessage}, $res_sug, 
+				$classname, $cweid);
+		justPrint('SQL', 'print', $data->{name}, 'weaknesses', $data->{output}, 
+			    \$data->{count}, \@values);
 	    }
 	}
     } else  {
 	    my $cweid = undef;
-	    my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
+	    if (defined($data->{verbose}) || defined($data->{insert})) {
+		my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
 			    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
 			    $res_sug, $classname, $cweid);
 	    
-	    justPrint(0, $data->{name}, 'weaknesses', $data->{assessId}, $bug->{BugId},
-	                    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
-			    $res_sug, $classname, $cweid);	    
-	    
-	    if ($check < 0)  {
-		die "Unable to insert\n";
+		if ($check < 0)  {
+		    die "Unable to insert\n";
+		}
+	    }
+
+	    if (defined($data->{verbose}) || defined($data->{justprint})) {
+		my @values = ($data->{assessId}, $bug->{BugId}, $bug_code, $bug_group, 
+				$bug_rank, $bug_sev, $bug->{BugMessage}, $res_sug, 
+				$classname, $cweid);
+		justPrint('SQL', 'print', $data->{name}, 'weaknesses', $data->{output}, 
+			    \$data->{count}, \@values);
 	    }
     }
     
-    $data->{db_count}++;
-    if ($data->{db_commits} != 'INF' && $data->{db_commits} == $data->{db_count})  {
-	$data->{db}->commit();
-	$data->{db_count} = 0;	
+    if (defined($data->{verbose}) || defined($data->{insert})) {
+	$data->{db_count}++;
+	if ($data->{db_commits} != 'INF' && $data->{db_commits} == $data->{db_count})  {
+	    $data->{db}->commit();
+	    $data->{db_count} = 0;	
+	}
     }
     return 0;
 }
@@ -912,13 +1229,21 @@ sub metricMongo
 			    MetricId 		=> int($metric->{MetricId})
 			);
 
-    push @{$data->{scarf}}, \%metricInstance;
+    if (defined($data->{verbose}) || defined($data->{insert})) {
+	push @{$data->{scarf}}, \%metricInstance;
     
-    $data->{db_count}++;
-    if ($data->{db_commits} != 'INF' && $data->{db_commits} == $data->{db_count}) {
-	my $res = $data->{assess}->insert_many(\@{$data->{scarf}});
-	$data->{db_count} = 0;
-	delete $data->{scarf};
+	$data->{db_count}++;
+	if ($data->{db_commits} != 'INF' && $data->{db_commits} == $data->{db_count}) {
+	    my $res = $data->{assess}->insert_many(\@{$data->{scarf}});
+	    $data->{db_count} = 0;
+	    delete $data->{scarf};
+	}
+    }
+    
+    if (defined($data->{verbose}) || defined($data->{justprint})) {
+	justPrint('NOSQLmetric', 'print', $data->{name}, 0, $data->{output}, 
+		    \$data->{count}, \%metricInstance);
+	 
     }
     return 0;
 }
@@ -926,7 +1251,7 @@ sub metricMongo
 sub bugMongo
 {
     my ($bug, $data) = @_;
-    
+   
     $data->{bug} = 1;
     my $bug_code = undef;
     if (exists $bug->{BugCode})  {
@@ -1018,13 +1343,21 @@ sub bugMongo
 			BugCwe           => $bug->{CweIds},
 			);
     
-    push @{$data->{scarf}}, \%bugInstance;
-    
-    $data->{db_count}++;
-    if ($data->{db_commits} != 'INF' && $data->{db_commits} == $data->{db_count}) {
-	my $res = $data->{assess}->insert_many(\@{$data->{scarf}});
-	$data->{db_count} = 0;
-	delete $data->{scarf};
+    if (defined($data->{verbose}) || defined($data->{insert})) {
+        push @{$data->{scarf}}, \%bugInstance;
+	
+	$data->{db_count}++;
+	if ($data->{db_commits} != 'INF' && $data->{db_commits} == $data->{db_count}) {
+	    my $res = $data->{assess}->insert_many(\@{$data->{scarf}});
+	    $data->{db_count} = 0;
+	    delete $data->{scarf};
+	}
+    }
+
+    if (defined($data->{verbose}) || defined($data->{justprint})) {
+	justPrint('NOSQLbug', 'print', $data->{name}, 0, $data->{output}, 
+		    \$data->{count}, \%bugInstance);
+	 
     }
     return 0;
 }
@@ -1033,24 +1366,39 @@ sub finish
 {
     my ($data) = @_;
     
+    # Adding the closing brakets if MongoDB
+    if (defined($data->{verbose}) || defined($data->{justprint})) {
+	if ($data->{name} eq 'mongodb') {
+	    my $fh = *STDOUT;
+	    my $success = -1;
+	    if (defined $data->{output}) {
+		$success = open ($fh, '>>', $data->{output}) or die "Could not open file $data->{output} $!"; 
+	    }
+	    print $fh "\n]\n";
+	    close $fh unless $success == -1;
+	}
+    }
+    
     # Executing the remaining instances 
-    if (exists $data->{SQL}) {
-	$data->{db}->commit();
-	$data->{db}->disconnect();
-    } elsif (exists $data->{NOSQL}) {
-	if (($data->{db_count} != 0 && exists $data->{bug}) 
+    if (defined($data->{verbose}) || defined($data->{insert})) {
+	if (exists $data->{SQL}) {
+	    $data->{db}->commit();
+	    $data->{db}->disconnect();
+	} elsif (exists $data->{NOSQL}) {
+	    if (($data->{db_count} != 0 && exists $data->{bug}) 
 			|| $data->{db_commits} eq 'INF') {
-	    my $res = $data->{assess}->insert_many(\@{$data->{scarf}});
-	    delete $data->{scarf};
-	}  elsif (($data->{db_count} != 0 && exists $data->{init}) 
+		my $res = $data->{assess}->insert_many(\@{$data->{scarf}});
+		delete $data->{scarf};
+	    }  elsif (($data->{db_count} != 0 && exists $data->{init}) 
 			|| $data->{db_commits} eq 'INF')  {
-	    $data->{assess}->insert({      'assessUuid'    => $data->{assessUuid},
-					   'pkgShortName'  => $data->{pkgName},
-					   'pkgVersion'    => $data->{pkgVer},
-					   'toolType'      => $data->{toolName},
-					   'toolVersion'   => $data->{toolVersion},
-					   'plat'          => $data->{plat},
-					});
+		$data->{assess}->insert({      	'assessUuid'    => $data->{assessUuid},
+						'pkgShortName'  => $data->{pkgName},
+						'pkgVersion'    => $data->{pkgVer},
+						'toolType'      => $data->{toolName},
+						'toolVersion'   => $data->{toolVersion},
+						'plat'          => $data->{plat},
+					    });	
+	    }
 	}
     }   
     return 0;
@@ -1124,10 +1472,10 @@ sub ProcessTableOptions
     
     if (defined $delete) {
         delete_tables($name , $database, $host, $port, $user, $pass, @table_names);
-	justPrint('delete', $database);
+	justPrint('SQL', 'delete', $database);
     } elsif  (defined ($create))  {
         create_tables($name , $database, $host, $port, $user, $pass, @table_names);
-	justPrint('create', $database);
+	justPrint('SQL', 'create', $database);
     }
 }
 

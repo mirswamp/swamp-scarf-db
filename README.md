@@ -18,7 +18,7 @@ To operate, scarf-to-db requires configuration.  The configuration can be set us
 
 The value for an option is determined by first one of these that sets the value: 1) command line options, 2) the _scarf-to-db-auth.conf_ configuration file, 3) the _scarf-to-db.conf_ file, and finally 4) defaults built-in to `scarf-to-db`.
 
-The location of configuration files can be set from an option before it is read.  If the configuration file location is explicitly set, it will result in an error if the file does not exist, but if the value is the default value, the configuration file is skipped if not present.
+The location of configuration files can be set from an option before the option file is processed.  If the configuration file location is explicitly set, it is an error if the file does not exist, but if the value is the default value, the configuration file is skipped if not present.
 
 The remainder of these sections describes each option and is grouped by the most appropriate place to set the option starting with the scarf-to-db.conf options, then scarf-to-db-auth.conf options, and finally options most appropriately passed as command line options. 
 
@@ -32,7 +32,7 @@ The purpose of `scarf-to-db.conf` file is to configure the database, but other o
 | `db-host=<host>`  | Hostname of the DBMS server, default: localhost |  
 | `db-port=<port>`  | Port on which the DBMS server listens on, default: 27017 (MongoDB), 5432 (PostgreSQL) or 3306 (MySQL, MariaDB)  |  
 | `db-name=<name>`  | Name of the database in which you want to save scarf results to. For eg: test, scarf, swamp. MongoDB and SQLite creates the database if it does not already exists (For SQLite the path to the SQLite database file can be specified using this option). **(REQUIRED)** |  
-| `db-commits=<max>` | Specifies the number of records or documents to be inserted, default: 1500 (MongoDB) or INF (infinity) (SQL databases) (**Note:** For MongoDB the amount of memory used depends on the value of this option. If you notice high memory usage, try reducing the value of this option. If you are using value other than INF and if `scarf-to-db` crashes for some reason you might see partial data in the database).|  
+| `db-commits=<max>` | Specifies the number of records or documents to be inserted atomically, default: 1500 (MongoDB) or INF (infinity) (SQL databases) (**Note:** For MongoDB the amount of memory used depends on the value of this option. If you notice high memory usage, try reducing the value of this option. If you are using a value other than INF, partial data may be visible to database readers, and will be permanent if `scarf-to-db` is interrupted before completion.|  
 | `auth-conf=<path>` | Path to _scarf-to-db-auth.conf_ file described in the next step (default location: current directory, default filename: scarf-to-db-auth.conf) |
 
 ##### **scarf-to-db-auth.conf**
@@ -42,36 +42,39 @@ The purpose of `scarf-to-db-auth.conf` is to store database credential informati
 
 | Option | Description |  
 |:---|:---|  
-| `db-username=<username>`| Username for DBMS **(REQUIRED)** |  
-| `db-password=<password>` | Password for DBMS **(REQUIRED)** |
+| `db-username=<username>`| Username for DBMS |  
+| `db-password=<password>` | Password for DBMS |
 
 
 
 ##### **Command line options**
 
-The command line options can be used to specify any of the previous configuration file options, plus options that would be unique to each run of `scarf-to-db`. Command line options start with `--` and have same name as in the configuration file. Values are specified as `--key = value` or `--key value`. Some of the frequently used options have shorter key names (`short-key`) which can also be used to specify values using `-short-key value`. The `short-key` is mentioned with the option itself in the following table. The command line options are as follows:
+The command line options can be used to specify any of the previous configuration file options, plus options that would be unique to each run of `scarf-to-db`. Command line options start with `--` and have same name as in the configuration file. Values are specified as `--key=value` or `--key value`. Some of the frequently used options have shorter key names (`short-key`) which can also be used to specify values using `-short-key value`. The `short-key` is mentioned with the option itself in the following table. The command line options are as follows:
 
 | Option | Description |
 |:---|:---|
-| `scarf=<path>` or `S <path>`   | Path to the SCARF results XML (parsed\_results.xml) file or parsed\_results.conf file  (**Note:** When test is run on a package it produces two files named, parsed\_results.conf and parsed\_results.tar.gz. parsed\_results.tar.gz file contains a file named, parsed\_results.xml file. One can specify the path to parsed\_results.conf file and `scarf-to-db` will automatically find the XML file or one can untar the parsed\_results.tar.gz and provide the path to XML file using this option) **(REQUIRED)**| 
-| `conf=<path>` | Path to Config file containing database parameters (default location: current directory, default filename: scarf-to-db.conf) |
-| `help` or `h` | Prints out the help menu on the console and exits |  
-| `version` or `v` |  Prints out the version of the program and exits |  
-| `create-tables` | Creates tables for SQL databases and exits|
-| `delete-tables` | Deletes tables for SQL databases and exits |
-| `just-print` or `n` | Prints out the commands used for database execution and exits (**Note:** You can specify only one of the following option along with this option: `scarf`, `create_tables`, `delete_tables`) | 
-| `test-auth` | Verifies the credential information provided in `scarf-to-db-auth.conf` file for the given database type and database name (**Note (For MongoDB): ** If you notice any authentication related error messages and you are sure that password and username entered are correct, please check if the `authenticationDatabase` used for the user is same as the database that you are trying to access ) |
-| `pkg-name=<name>` | Name of the package that was assessed (default: null) |  
-| `pkg-version=<version>` | Version of the package that was assessed (default: null) |  
-| `platform=<name>` | Name of the platform on which the assessment was run (default: null) |
+| `--scarf=<path>` or `-s <path>`   | Path to the SCARF results XML (parsed\_results.xml) file or parsed\_results.conf file  (**Note:** When test is run on a package it produces two files named, parsed\_results.conf and parsed\_results.tar.gz. parsed\_results.tar.gz file contains a file named, parsed\_results.xml file. One can specify the path to parsed\_results.conf file and `scarf-to-db` will automatically find the XML file or one can untar the parsed\_results.tar.gz and provide the path to XML file using this option) **(REQUIRED)**| 
+| `--conf=<path>` | Path to Config file containing database parameters (default location: current directory, default filename: scarf-to-db.conf) |
+| `--help` or `-h` | Prints out the help menu on the console and exits |  
+| `--version` or `-v` |  Prints out the version of the program and exits |  
+| `--create-tables` | Creates tables for SQL databases and exits|
+| `--delete-tables` | Deletes tables for SQL databases and exits |
+| `--just-print` or `-n` | Prints out the commands used for database execution and exits (**Note:** You can specify only one of the following option along with this option: `--scarf`, `--create-tables`, `--delete-tables`) | 
+| `--test-auth` | Verifies the credential information provided in `scarf-to-db-auth.conf` file for the given database type and database name  |
+| `--pkg-name=<name>` | Name of the package that was assessed (default: null) |  
+| `--pkg-version=<version>` | Version of the package that was assessed (default: null) |  
+| `--platform=<name>` | Name of the platform on which the assessment was run (default: null) |
+| `--verbose or -V` | Inserts data into the database and prints out the insert statements depending on the value of `--output-file` |
+| `--output-file=<name>` | Saves all the insert statement to the file provided using this option, default: console window |
+| `--assess-id=<name>` | Unique id (for SQL databases) required when just printing out the the insert statements |
 
 #### **Database table creation or deletion for SQL databases**
 
 SQL databases require tables to be created before importing SCARF data. However, MongoDB does not require any tables for storing data. `scarf-to-db` can be used to create or delete SQL database tables using the following command line options:
 | Option | Description |  
 |:---|:---|  
-| `create-tables` | Creates tables for SQL databases and exits |
-| `delete-tables` | Deletes tables for SQL databases and exits |
+| `--create-tables` | Creates tables for SQL databases and exits |
+| `--delete-tables` | Deletes tables for SQL databases and exits |
 
 > The schema for the SCARF tables can be found in the section **Database Schema**.
 
@@ -102,11 +105,11 @@ auth-conf = scarf-to-db-auth.conf
 bin/scarf-to-db --scarf=./parsed_results.conf 
 ```
 
-> **Note: (For SQL databases)** If the above command executes successfully for SQL databases you will see similar output as mentioned below along with data being saved in the database.
-> **Note: (For MongoDB)** If the above command executes successfully for MongoDB you will not see any output but the data will be saved in the database.
-If you notice any authentication related error messages and you are sure that password and username entered are correct, please check if the `authenticationDatabase` used for the user is same as the database that you are trying to access
+> **Note:** If the above command executes successfully you will not see any output but the data will be saved in the database
 
-##### Output (For SQL databases):
+##### Output:
+
+For SQL databases:
 
 - You will see similar insert statement only once per SCARF file
 ```
@@ -119,7 +122,43 @@ INSERT INTO locations VALUES  ('4', '1', '1', '1', 'lighttpd-1.4.33/src/lemon.c'
 INSERT INTO weaknesses VALUES  ('4', '1', 'Assigned value is garbage or undefined', 'Logic error', null, null, 'Assigned value is garbage or undefined', null, null, null); 
 ```
 
-> **Note: ** The above output can used to manually store data in any of the SQL databases.
+For MongoDB:
+
+* You will see an array of documents similar to the following document
+
+```sh
+{
+	"BugId" : 1,
+	"BugRank" : null,
+	"plat" : null,
+	"toolType" : "clang-sa",
+	"Methods" : [
+	],
+	"classname" : null,
+	"toolVersion" : "clang version 3.7.0",
+	"BugSeverity" : null,
+	"Location" : [
+			{
+				"LocationId" : 1,
+				"EndLine" : 857,
+				"StartLine" : 857,
+				"primary" : true,
+				"SourceFile" : "lighttpd-1.4.33/src/lemon.c",
+				"StartColumn" : 9
+			}
+	],
+	"BugMessage" : "Assigned value is garbage or undefined",
+	"BugCode" : "Assigned value is garbage or undefined",
+	"pkgShortName" : null,
+	"pkgVersion" : null,
+	"assessUuid" : "138ad1cb-129e-4837-a376-eed3b2ed072f",
+	"BugGroup" : "Logic error",
+	"BugResolutionMsg" : null,
+	"BugCwe" : null
+}
+```
+
+> **Note: ** The above output can used to manually import data to any of the supported databases.
 
 
 #### **Database Schema**
@@ -148,7 +187,7 @@ INSERT INTO weaknesses VALUES  ('4', '1', 'Assigned value is garbage or undefine
 			"StartLine" : <int>,
 			"primary" : <Boolean>,
 			"LocationId" : <int>,
-			"SourceFile" : <path - String>,
+			"SourceFile" : <path-String>,
 			"StartColumn" : <int>,
 			"EndColumn" : <int>,
 			"Explanation" : <String>
@@ -159,7 +198,7 @@ INSERT INTO weaknesses VALUES  ('4', '1', 'Assigned value is garbage or undefine
 	"pkgShortName" : <String>,
 	"BugId" : <int>,
 	"pkgVersion" : <String>,
-	"assessUuid" : <uuid - String>,
+	"assessUuid" : <uuid-String>,
 	"BugGroup" : <String>,
 	"BugResolutionMsg" : <String>,
 	"BugCwe" : <String>
@@ -171,10 +210,10 @@ INSERT INTO weaknesses VALUES  ('4', '1', 'Assigned value is garbage or undefine
 ```
 {  
 	"_id" : <unique MongoDB generated id>,
-	"SourceFile" : <path - String>, 
+	"SourceFile" : <path-String>, 
 	"Type" : <String>,  
 	"pkgVersion" : <String>,  
-	"assessUuid" : <uuid - String>,  
+	"assessUuid" : <uuid-String>,  
 	"toolType" : <String>,  
 	"toolVersion" : <String>,  
 	"Value" : <String>,   
@@ -192,7 +231,7 @@ INSERT INTO weaknesses VALUES  ('4', '1', 'Assigned value is garbage or undefine
 {  
 	"_id" : <unique MongoDB generated id>, 
 	"pkgVersion" : <String>,  
-	"assessUuid" : <uuid - String>,  
+	"assessUuid" : <uuid-String>,  
 	"toolType" : <String>,  
 	"toolVersion" : <String>,  
 	"plat" : <String>,  
@@ -314,6 +353,7 @@ By default, MongoDB server listens on `localhost:27017` network interface. There
 
 ##### Authentication
 By default, MongoDB does not require *root password or user accounts* to create databases and insert documents. If you like to authenticate and authorize users please see [https://docs.mongodb.com/manual/tutorial/enable-authentication/](https://docs.mongodb.com/manual/tutorial/enable-authentication/).
+> **Note:** If you notice any authentication related error messages and you are sure that password and username entered are correct, please check if the `authenticationDatabase` used for the user is same as the database that you are trying to access
 
 ####Installing PostgreSQL
 If you don't have PostgreSQL installed already, please follow the installation guide at [https://www.postgresql.org/download/linux/redhat/](https://www.postgresql.org/download/linux/redhat/)

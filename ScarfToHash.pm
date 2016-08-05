@@ -146,10 +146,20 @@ sub endHandler
 {
     my ( $hash, $lastElt, $bugcallback, $metriccallback, $bugsumcallback, $metricsumcallback, $validBody, 
 	    $finishcallback, $data, $parser, $elt ) = @_;    
+    for my $cmpElt ( qw/AssessmentReportFile BugCode BugRank ClassName BugSeverity BugGroup BugMessage ResolutionSuggestion Class/ ) {
+	if ( $elt eq $cmpElt ) {
+	    $$hash->{$elt} =~ s/(^\s+)|(\s+$)//g;
+	}
+    }
+    for my $locElt ( qw/Explanation/ ) {
+	if ( $elt eq $locElt ) {
+	    @{$$hash->{BugLocations}}[-1]->{$elt} =~ s/(^\s+)|(\s+$)//g;	    
+	}
+    }
+
     if ( $elt eq "BugInstance" && defined $bugcallback ) {
 	$bugcallback->( $$hash, $data ) and $parser->finish;
 	$$hash = {};
-
     } elsif ( $elt eq "Metric" && defined $metriccallback ) {
 	if( ! defined $$hash->{SourceFile} ) {
 	    delete $$hash->{SourceFile};
@@ -193,7 +203,11 @@ sub charHandler
     for my $simpleElt ( qw/AssessmentReportFile BuildId BugCode BugId BugRank ClassName BugSeverity BugGroup
     BugMessage ResolutionSuggestion Class Value/ ) {
 	if ( $elt eq $simpleElt ) {
-	    $$hash->{$elt} = $chars;
+	    if ( not exists $$hash->{$elt} ) {
+		$$hash->{$elt} = $chars;
+	    } else {
+		$$hash->{$elt} .= $chars;
+	    }
 	    return $$hash;
 	}
     }
@@ -206,15 +220,27 @@ sub charHandler
     }
 
     if ( $elt eq "SourceFile" && exists $$hash->{SourceFile} ) {
-        $$hash->{$elt} = $chars;
+        if ( not exists $$hash->{SourceFile} ) {
+	    $$hash->{SourceFile} = $chars;
+	} else {
+	    $$hash->{SourceFile} .= $chars;
+	}
         return $$hash;
     }
     if ( $elt eq "Type" && exists $$hash->{Type} ) {
-        $$hash->{$elt} = $chars;
-        return $$hash;
+        if ( not exists $$hash->{Type} ) {
+	    $$hash->{Type} = $chars;
+        } else {
+	    $$hash->{Type} .= $chars;
+	}
+	return $$hash;
     }
     if ( $elt eq "Method" && exists $$hash->{Method} ) {
-        $$hash->{$elt} = $chars;
+        if ( not exists $$hash->{Type} ) {
+	    $$hash->{Method} = $chars;
+	} else {
+	    $$hash->{Method} .= $chars;
+	}
         return $$hash;
     }
 
@@ -234,7 +260,11 @@ sub charHandler
 
     for my $locElt ( qw/EndColumn EndLine Explanation StartLine SourceFile StartColumn/ ) {
 	if ( $elt eq $locElt && defined $$hash->{BugLocations}) {
-	    @{$$hash->{BugLocations}}[-1]->{$elt} = $chars;
+	    if ( not exists @{$$hash->{BugLocations}}[-1]->{$elt} ) {
+		@{$$hash->{BugLocations}}[-1]->{$elt} = $chars;
+	    } else {
+		@{$$hash->{BugLocations}}[-1]->{$elt} .= $chars;
+	    }
 	    return $$hash;
 	}
     }	
