@@ -373,9 +373,9 @@ If you don't have MariaDB installed already, please follow the installation guid
 3. DBD::MySQL
 4. DBD::SQLite
 5. MongoDB
-6. boolean
-7. YAML 
-8. Config::AutoConf
+6. YAML 
+7. Config::AutoConf
+8. JSON::MaybeXS
 
 On `rhel-6.4-64` platform, execute the following commands to install the drivers using CPAN
 ```sh

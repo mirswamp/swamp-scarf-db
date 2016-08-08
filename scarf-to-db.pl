@@ -22,11 +22,12 @@ use Getopt::Long;
 use FindBin;
 use lib $FindBin::Bin;
 use ScarfToHash;
+use JSONToHash;
 # required for SQL databases
 use DBI;
 # required for MongoDB
-use boolean;
 use MongoDB;
+use JSON::MaybeXS;
 
 ############################################## Main ######################################################
 
@@ -94,13 +95,14 @@ sub main
 	    print "Please fix the above errors\n";
 	    exit 1;
 	}
-    } elsif ($options{scarf} =~ /^.*.xml$/) {
+    } elsif ($options{scarf} =~ /^.*.xml$/ || $options{scarf} =~ /^.*.json$/) {
         # Parsing the files
 	parse_files($name, $pkg_name, $pkg_ver, $plat, $database,
 		$options{db_host}, $options{db_port}, $options{db_username}, 
 		$options{db_password}, $options{db_commits}, \$options{scarf}, 
 		$options{just_print}, $options{verbose}, $insert,
-		$options{assess_id}), $options{output_file}; 
+		$options{assess_id}, $options{output_file}); 
+    
     } else {
 	print "Please input the name of the scarf file with correct extension\n";
     }
@@ -460,207 +462,20 @@ sub justPrint
 	    }
 	}
     } elsif ($type =~ /^NOSQL.*$/) {
-	my $insert = NOSQLStatements('insert');
-	my $data;
 	if ($$count == 0) {
 	    print $fh "[\n";
+	} else {
+	    print $fh ',';
 	}
-	if ($insert =~ /^(.*?)\(\[/s) { 	    
-	    
-	    # printing the data
-	    if ($$count == 0) {
-		print $fh "\t{\n"; 
-	    } else {
-		print $fh ",\n\t{\n"; 
-	    }
-	    if ($type eq 'NOSQLbug') {
-		$data = jsonBug($values);
-	    } elsif ($type eq 'NOSQLmetric') {
-		$data = jsonMetric($values);
-	    }
-	    print $fh $data;
-	    print $fh "\n\t}";
-	}
+	my $obj = JSON::MaybeXS->new(utf8 => 1, pretty =>1); 
+	$obj = $obj->allow_blessed;
+	my $json = $obj->encode($values);	
+	print $fh $json;
     }
     $$count++;
     close $fh unless $success == -1;
     return $retValue;
 }
-################################## Json writting subroutine ###############################
-sub jsonMetric
-{
-
-    my ($values) = @_;
-    my $data;
-    my $string;    
-    my $find = "\n";
-    my $replace = "\\n";
-    my $findquotes = "\"";
-    my $replacequotes = '\"';
-    $find = quotemeta $find;
-    $findquotes = quotemeta $findquotes;
-    
-    # printing the bugId
-    while (my ($k, $v) = each %$values) {
-        if ($k eq 'MetricId') {
-	    $string = "\t\t\"$k\" : $v";
-	}
-    }
-
-    # looking for other values
-    while (my ($k, $v) = each %$values) {
-        my $count = 0;
-        defined $v or $v = 'null';
-	$v =~ s/$find/$replace/g;		
-	$v =~ s/$findquotes/$replacequotes/g;		
-
-        if ($v ne 'null') {
-	    if ($v & ~$v) {
-		$v = "\"$v\"";
-	    }
-	    if ($v eq '') {
-		$v = "\"$v\"";
-	    }
-	}
-	if ($k ne 'MetricId') {
-	    $string = "$string,\n\t\t\"$k\" : $v";
-	}
-    }
-    return $string;
-}
-
-################################## Json writting subroutine ###############################
-sub jsonBug
-{
-
-    my ($values) = @_;
-    my $data;
-    my $string;    
-    my $find = "\n";
-    my $replace = "\\n";
-    my $findquotes = "\"";
-    my $replacequotes = '\"';
-    $find = quotemeta $find;
-    $findquotes = quotemeta $findquotes;
-    
-    # printing the bugId
-    while (my ($k, $v) = each %$values) {
-        if ($k eq 'BugId') {
-	    $string = "\t\t\"$k\" : $v";
-	}
-    }
-
-    # looking for other values
-    while (my ($k, $v) = each %$values) {
-        my $count = 0;
-        defined $v or $v = 'null';
-	$v =~ s/$find/$replace/g;		
-	$v =~ s/$findquotes/$replacequotes/g;		
-
-        if (ref($v) ne 'ARRAY' && $v ne 'null') {
-	    if ($v & ~$v) {
-		$v = "\"$v\"";
-	    }
-	    if ($v eq '') {
-		$v = "\"$v\"";
-	    }
-	}
-	if ($k eq 'Methods') {
-	    $string = "$string,\n\t\t\"$k\" : [";
-	    if (scalar @$v != 0) {
-	        foreach my $val (@$v) {
-		    if ($count != 0) {
-		        $string = "$string,";	
-		    } 
-		    $data = jsonHelper($val, 'MethodId');
-		    $string = $string . $data;
-		    $count++;
-		} 
-	    } 
-	    $string = "$string\n\t\t]";
-	}  elsif ($k eq 'Location') {
-	    $string = "$string,\n\t\t\"$k\" : [";
-	    foreach my $val (@$v) {
-	        if ($count != 0) {
-		    $string = "$string,";	
-		} 
-		$data = jsonHelper($val, 'LocationId');
-		$string = $string . $data;
-		$count++;
-	    }
-	    $string = "$string\n\t\t]";
-	} elsif ($k ne 'BugId') {
-	    $string = "$string,\n\t\t\"$k\" : $v";
-	}
-    }
-    return $string;
-}
-
-
-################################## Json helper subroutine #################################
-sub jsonHelper
-{
-    my ($val, $keyVal) = @_;
-    my $find = "\n";
-    my $replace = "\\n";
-    my $findquotes = "\"";
-    my $replacequotes = '\"';
-    $find = quotemeta $find;
-    $findquotes = quotemeta $findquotes;
-    
-    my $string = "\n\t\t\t{\n";
-			    
-    if (ref($val) eq 'HASH') {
-	while (my ($key, $value) = each %$val) {
-	    if ($key eq $keyVal) {
-		$value =~ s/$find/$replace/g;		
-		$value =~ s/$findquotes/$replacequotes/g;		
-		$string = "$string \t\t\t\t\"$key\" : $value";
-	    }
-	}		    	    
-    
-	while (my ($key, $value) = each %$val) {
-	    if (ref($value) ne 'ARRAY' && $value ne 'null') {
-		$value =~ s/$find/$replace/g;		
-		$value =~ s/$findquotes/$replacequotes/g;		
-		if ($key eq 'primary') {
-		    if ($value == 0) {
-			$value = 'false';
-		    } else {
-			$value = 'true';
-		    }
-		} elsif ($value & ~$value) {
-		    $value = "\"$value\"";
-		} 
-		if ($value eq '') {
-		    $value = "\"$value\"";
-		}
-	    }
-	    if ($key ne $keyVal) {
-		$string = "$string,\n\t\t\t\t\"$key\" : $value";
-	    }
-	}
-    }
-    $string = "$string \n\t\t\t}";
-    return $string;
-}
-
-#################################### SQL database commands #################################
-sub NOSQLStatements
-{
-    my ($operation) = @_; 
-    my %statements = (
-        insert	=> "db.assess.insert([])",
-	drop	=> "db.assess.drop()",
-    );
-
-    if ($operation eq 'insert')  {
-        return ($statements{insert});
-    } elsif ($operation eq 'delete') {
-        return ($statements{drop});
-    } 
-}
-
 
 #################################### SQL database commands #################################
 sub SQLStatements
@@ -848,13 +663,16 @@ sub parse_files
     }
 
     my $scarf;
-
+    my $fileName; 
+    
     # untaring the file to a handler
     if (ref($names) eq "HASH") {
 	my @cmd = ("tar", "-xzf", "$names->{dir}/$names->{archive}", 
     		    "$names->{tarDir}/$names->{file}", "-O"); 
 	open $scarf, '-|', @cmd;
+	$fileName = $names->{file};
     } else {
+	$fileName = $$names;
 	$scarf = $names;
     }
 
@@ -894,14 +712,18 @@ sub parse_files
     }
     
     # Parsing the file and uploading the data
-    my $test_reader = new ScarfToHash($scarf, \%callbacks);
+    my $test_reader;
+    if ($fileName =~ /^.*\.json$/) {
+        $test_reader = new JSONToHash($scarf, \%callbacks);
+    } else {
+        $test_reader = new ScarfToHash($scarf, \%callbacks);
+    }
+    
     $test_reader->parse;
 	
     if (ref($names) eq "HASH") {
 	close $scarf;
     }
-
-
 }
 
 #################################### Subroutine to parse and save the values #######################################
@@ -1288,9 +1110,9 @@ sub bugMongo
         foreach my $method (@{$bug->{Methods}}) {
             $method->{MethodId} = int($method->{MethodId});
 	    if ( $method->{primary} == 1)  {
-                $method->{primary} = boolean::true;
+                $method->{primary} = JSON->true;
             } else  {
-                $method->{primary} = boolean::false;	
+                $method->{primary} = JSON->false;	
 	    }
 	}
     }
@@ -1301,9 +1123,9 @@ sub bugMongo
             $location->{LocationId} = int($location->{LocationId});
             
 	    if ( $location->{primary} == 1)  {
-                $location->{primary} = boolean::true;
+                $location->{primary} = JSON->true;
             } else  {
-                $location->{primary} = boolean::false;	
+                $location->{primary} = JSON->false;	
 	    }
     
 	    if (exists $location->{StartLine})  {
