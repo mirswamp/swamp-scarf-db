@@ -56,7 +56,7 @@ The command line options can be used to specify any of the previous configuratio
 
 | Option | Description |
 |:---|:---|
-| `--scarf=<path>` or `-s <path>`   | Path to the SCARF results XML or JSON (parsed\_results.xml or parsed\_results.json) file or parsed\_results.conf file  (**Note:** When test is run on a package it produces two files named, parsed\_results.conf and parsed\_results.tar.gz. parsed\_results.tar.gz file contains a file named, parsed\_results.xml file. One can specify the path to parsed\_results.conf file and `scarf-to-db` will automatically find the XML file or one can untar the parsed\_results.tar.gz and provide the path to XML or JSON file using this option) **(REQUIRED)**| 
+| `--scarf=<path>` or `-s <path>`   | Path to the SCARF results XML or JSON (parsed\_results.xml or parsed\_results.json) file or parsed\_results.conf file  (**Note:** When test is run on a package it produces two files named, parsed\_results.conf and parsed\_results.tar.gz. parsed\_results.tar.gz file contains a file named, parsed\_results.xml file. One can specify the path to parsed\_results.conf file and `scarf-to-db` will automatically find the XML or JSON file or one can untar the parsed\_results.tar.gz and provide the path to XML or JSON file using this option) **(REQUIRED)**| 
 | `--conf=<path>` | Path to Config file containing database parameters (default location: current directory, default filename: scarf-to-db.conf) |
 | `--help` or `-h` | Prints out the help menu on the console and exits |  
 | `--version` or `-v` |  Prints out the version of the program and exits |  

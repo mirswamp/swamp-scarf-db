@@ -1,0 +1,624 @@
+<p></p><h3 id="scarf-to-db-user-guide"><center><strong>scarf-to-db USER GUIDE</strong><center></center></center></h3><p></p>
+
+<p>This document's the program <code>scarf-to-db</code> that can be used to upload SCARF results into a NOSQL database (MongoDB) or SQL databases (PostgreSQL, MySQL, MariaDB or SQLite3). Uploading SCARF results into any DBMS involves the following steps: </p>
+
+<ol>
+<li>Installing the DBMS (see Appendix A)</li>
+<li>Installing Perl drivers (see Appendix B)</li>
+<li><code>scarf-to-db</code> configuration</li>
+<li>Database table creation or deletion for SQL databases</li>
+<li>Use <code>scarf-to-db</code> to add SCARF results to DBMS</li>
+<li>Example command line execution</li>
+<li>Database schema</li>
+</ol>
+
+<p>The rest of this document will introduce all the above sections. </p>
+
+
+
+<h4 id="scarf-to-db-configuration"><strong><code>scarf-to-db</code> configuration</strong></h4>
+
+<p>To operate, scarf-to-db requires configuration.  The configuration can be set using the command line, or via configuration files.  <code>scarf-to-db</code> supports two configuration files:  <em>scarf-to-db.conf</em> for database configuration, and <em>scarf-to-db-auth.conf</em> for database credential data (the permissions of this file should be restricted as it contains sensitive information).  The use of the configuration files is optional, but recommended.</p>
+
+<p>The value for an option is determined by first one of these that sets the value: 1) command line options, 2) the <em>scarf-to-db-auth.conf</em> configuration file, 3) the <em>scarf-to-db.conf</em> file, and finally 4) defaults built-in to <code>scarf-to-db</code>.</p>
+
+<p>The location of configuration files can be set from an option before the option file is processed.  If the configuration file location is explicitly set, it is an error if the file does not exist, but if the value is the default value, the configuration file is skipped if not present.</p>
+
+<p>The remainder of these sections describes each option and is grouped by the most appropriate place to set the option starting with the scarf-to-db.conf options, then scarf-to-db-auth.conf options, and finally options most appropriately passed as command line options. </p>
+
+
+
+<h5 id="scarf-to-dbconf"><strong>scarf-to-db.conf</strong></h5>
+
+<p>The purpose of <code>scarf-to-db.conf</code> file is to configure the database, but other options can also be specified in this file to set their default values. The database related settings that can be configured using this file are as follows:</p>
+
+<table>
+<thead>
+<tr>
+  <th align="left">Option</th>
+  <th align="left">Description</th>
+</tr>
+</thead>
+<tbody><tr>
+  <td align="left"><code>db-type=&lt;type&gt;</code></td>
+  <td align="left">Database type - It can be any of the databases supported, default: mongodb</td>
+</tr>
+<tr>
+  <td align="left"><code>db-host=&lt;host&gt;</code></td>
+  <td align="left">Hostname of the DBMS server, default: localhost</td>
+</tr>
+<tr>
+  <td align="left"><code>db-port=&lt;port&gt;</code></td>
+  <td align="left">Port on which the DBMS server listens on, default: 27017 (MongoDB), 5432 (PostgreSQL) or 3306 (MySQL, MariaDB)</td>
+</tr>
+<tr>
+  <td align="left"><code>db-name=&lt;name&gt;</code></td>
+  <td align="left">Name of the database in which you want to save scarf results to. For eg: test, scarf, swamp. MongoDB and SQLite creates the database if it does not already exists (For SQLite the path to the SQLite database file can be specified using this option). <strong>(REQUIRED)</strong></td>
+</tr>
+<tr>
+  <td align="left"><code>db-commits=&lt;max&gt;</code></td>
+  <td align="left">Specifies the number of records or documents to be inserted atomically, default: 1500 (MongoDB) or INF (infinity) (SQL databases) (<strong>Note:</strong> For MongoDB the amount of memory used depends on the value of this option. If you notice high memory usage, try reducing the value of this option. If you are using a value other than INF, partial data may be visible to database readers, and will be permanent if <code>scarf-to-db</code> is interrupted before completion.</td>
+</tr>
+<tr>
+  <td align="left"><code>auth-conf=&lt;path&gt;</code></td>
+  <td align="left">Path to <em>scarf-to-db-auth.conf</em> file described in the next step (default location: current directory, default filename: scarf-to-db-auth.conf)</td>
+</tr>
+<tr>
+  <td align="left"><code>include-assess-report-file=&lt;value&gt;</code></td>
+  <td align="left">Adds the AssessmentReportFile name for the given bug instance (default: null)</td>
+</tr>
+<tr>
+  <td align="left"><code>include-buildid=&lt;value&gt;</code></td>
+  <td align="left">Adds BuildId for the given bug instance (default: null)</td>
+</tr>
+<tr>
+  <td align="left"><code>include-instance-location=&lt;value&gt;</code></td>
+  <td align="left">Adds the InstanceLocation information for the given bug instance (default: null)</td>
+</tr>
+</tbody></table>
+
+
+
+
+<h5 id="scarf-to-db-authconf"><strong>scarf-to-db-auth.conf</strong></h5>
+
+<p>The purpose of <code>scarf-to-db-auth.conf</code> is to store database credential information if required by DBMS (New installation of MongoDB and SQLite does not require username or password). Since the information stored is sensitive, the file permission should be set accordingly so that only the owner can read the file. The database authentication related options configured in this file are as follows:</p>
+
+<table>
+<thead>
+<tr>
+  <th align="left">Option</th>
+  <th align="left">Description</th>
+</tr>
+</thead>
+<tbody><tr>
+  <td align="left"><code>db-username=&lt;username&gt;</code></td>
+  <td align="left">Username for DBMS</td>
+</tr>
+<tr>
+  <td align="left"><code>db-password=&lt;password&gt;</code></td>
+  <td align="left">Password for DBMS</td>
+</tr>
+</tbody></table>
+
+
+
+
+<h5 id="command-line-options"><strong>Command line options</strong></h5>
+
+<p>The command line options can be used to specify any of the previous configuration file options, plus options that would be unique to each run of <code>scarf-to-db</code>. Command line options start with <code>--</code> and have same name as in the configuration file. Values are specified as <code>--key=value</code> or <code>--key value</code>. Some of the frequently used options have shorter key names (<code>short-key</code>) which can also be used to specify values using <code>-short-key value</code>. The <code>short-key</code> is mentioned with the option itself in the following table. The command line options are as follows:</p>
+
+<table>
+<thead>
+<tr>
+  <th align="left">Option</th>
+  <th align="left">Description</th>
+</tr>
+</thead>
+<tbody><tr>
+  <td align="left"><code>--scarf=&lt;path&gt;</code> or <code>-s &lt;path&gt;</code></td>
+  <td align="left">Path to the SCARF results XML or JSON (parsed_results.xml or parsed_results.json) file or parsed_results.conf file  (<strong>Note:</strong> When test is run on a package it produces two files named, parsed_results.conf and parsed_results.tar.gz. parsed_results.tar.gz file contains a file named, parsed_results.xml file. One can specify the path to parsed_results.conf file and <code>scarf-to-db</code> will automatically find the XML or JSON file or one can untar the parsed_results.tar.gz and provide the path to XML or JSON file using this option) <strong>(REQUIRED)</strong></td>
+</tr>
+<tr>
+  <td align="left"><code>--conf=&lt;path&gt;</code></td>
+  <td align="left">Path to Config file containing database parameters (default location: current directory, default filename: scarf-to-db.conf)</td>
+</tr>
+<tr>
+  <td align="left"><code>--help</code> or <code>-h</code></td>
+  <td align="left">Prints out the help menu on the console and exits</td>
+</tr>
+<tr>
+  <td align="left"><code>--version</code> or <code>-v</code></td>
+  <td align="left">Prints out the version of the program and exits</td>
+</tr>
+<tr>
+  <td align="left"><code>--create-tables</code></td>
+  <td align="left">Creates tables for SQL databases and exits</td>
+</tr>
+<tr>
+  <td align="left"><code>--delete-tables</code></td>
+  <td align="left">Deletes tables for SQL databases and exits</td>
+</tr>
+<tr>
+  <td align="left"><code>--just-print</code> or <code>-n</code></td>
+  <td align="left">Prints out the commands used for database execution and exits (<strong>Note:</strong> You can specify only one of the following option along with this option: <code>--scarf</code>, <code>--create-tables</code>, <code>--delete-tables</code>)</td>
+</tr>
+<tr>
+  <td align="left"><code>--test-auth</code></td>
+  <td align="left">Verifies the credential information provided in <code>scarf-to-db-auth.conf</code> file for the given database type and database name</td>
+</tr>
+<tr>
+  <td align="left"><code>--pkg-name=&lt;name&gt;</code></td>
+  <td align="left">Name of the package that was assessed (default: null)</td>
+</tr>
+<tr>
+  <td align="left"><code>--pkg-version=&lt;version&gt;</code></td>
+  <td align="left">Version of the package that was assessed (default: null)</td>
+</tr>
+<tr>
+  <td align="left"><code>--platform=&lt;name&gt;</code></td>
+  <td align="left">Name of the platform on which the assessment was run (default: null)</td>
+</tr>
+<tr>
+  <td align="left"><code>--verbose or -V</code></td>
+  <td align="left">Inserts data into the database and prints out the insert statements depending on the value of <code>--output-file</code></td>
+</tr>
+<tr>
+  <td align="left"><code>--output-file=&lt;name&gt;</code></td>
+  <td align="left">Saves all the insert statement to the file provided using this option, default: console window</td>
+</tr>
+<tr>
+  <td align="left"><code>--assess-id=&lt;name&gt;</code></td>
+  <td align="left">Unique id (for SQL databases) required when just printing out the the insert statements</td>
+</tr>
+</tbody></table>
+
+
+
+
+<h4 id="database-table-creation-or-deletion-for-sql-databases"><strong>Database table creation or deletion for SQL databases</strong></h4>
+
+<p>SQL databases require tables to be created before importing SCARF data. However, MongoDB does not require any tables for storing data. <code>scarf-to-db</code> can be used to create or delete SQL database tables using the following command line options:</p>
+
+<table>
+<thead>
+<tr>
+  <th align="left">Option</th>
+  <th align="left">Description</th>
+</tr>
+</thead>
+<tbody><tr>
+  <td align="left"><code>--create-tables</code></td>
+  <td align="left">Creates tables for SQL databases and exits</td>
+</tr>
+<tr>
+  <td align="left"><code>--delete-tables</code></td>
+  <td align="left">Deletes tables for SQL databases and exits</td>
+</tr>
+</tbody></table>
+
+
+<blockquote>
+  <p>The schema for the SCARF tables can be found in the section <strong>Database Schema</strong>.</p>
+</blockquote>
+
+
+
+<h4 id="saving-the-scarf-results-into-a-database"><strong>Saving the SCARF results into a database</strong></h4>
+
+<p>To save the SCARF results into a database (Assuming you have the DBMS and appropriate perl drivers installed), only the <code>scarf</code> command line option is required (assuming you are using defaults values and default configuration files location present in the program)</p>
+
+
+
+<h4 id="example-commands-loading-scarf-into-a-mongodb-database"><strong>Example commands loading SCARF into a MongoDB database</strong></h4>
+
+<p>Configure the <code>scarf-to-db.conf</code> and <code>scarf-to-db-auth.conf</code> files as mentioned in the previous sections. After configuring those files you should have content similar to the following configuration files:</p>
+
+<p>scarf-to-db-auth.conf</p>
+
+
+
+<pre class="prettyprint"><code class=" hljs ini"><span class="hljs-setting">db-username = <span class="hljs-value">user</span></span>
+<span class="hljs-setting">db-password = <span class="hljs-value">password</span></span></code></pre>
+
+<p>scarf-to-db.conf</p>
+
+
+
+<pre class="prettyprint"><code class=" hljs lasso">db<span class="hljs-attribute">-type</span> <span class="hljs-subst">=</span> mongodb
+db<span class="hljs-attribute">-host</span> <span class="hljs-subst">=</span> my<span class="hljs-attribute">-mongo</span><span class="hljs-built_in">.</span>swamp<span class="hljs-built_in">.</span>cs<span class="hljs-built_in">.</span>wisc<span class="hljs-built_in">.</span>edu
+db<span class="hljs-attribute">-name</span> <span class="hljs-subst">=</span> scarf
+auth<span class="hljs-attribute">-conf</span> <span class="hljs-subst">=</span> scarf<span class="hljs-attribute">-to</span><span class="hljs-attribute">-db</span><span class="hljs-attribute">-auth</span><span class="hljs-built_in">.</span>conf</code></pre>
+
+
+
+<h5 id="execution-command"><strong>Execution command </strong></h5>
+
+
+
+<pre class="prettyprint"><code class="language-sh hljs livecodeserver">bin/scarf-<span class="hljs-built_in">to</span>-db <span class="hljs-comment">--scarf=./parsed_results.conf </span></code></pre>
+
+<blockquote>
+  <p><strong>Note:</strong> If the above command executes successfully you will not see any output but the data will be saved in the database</p>
+</blockquote>
+
+
+
+<h5 id="output">Output:</h5>
+
+<p>For SQL databases:</p>
+
+<ul>
+<li>You will see similar insert statement only once per SCARF file</li>
+</ul>
+
+
+
+<pre class="prettyprint"><code class=" hljs sql"><span class="hljs-operator"><span class="hljs-keyword">INSERT</span> <span class="hljs-keyword">INTO</span> assess (assessuuid, pkgshortname, pkgversion, tooltype, toolversion, plat) <span class="hljs-keyword">VALUES</span>  (<span class="hljs-string">'138ad1cb-129e-4837-a376-eed3b2ed072f'</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>, <span class="hljs-string">'clang-sa'</span>, <span class="hljs-string">'clang version 3.7.0, null);</span></span></code></pre>
+
+<ul>
+<li>You will see insert statements similar to these per weakness</li>
+</ul>
+
+
+
+<pre class="prettyprint"><code class=" hljs sql"><span class="hljs-operator"><span class="hljs-keyword">INSERT</span> <span class="hljs-keyword">INTO</span> methods <span class="hljs-keyword">VALUES</span>  (<span class="hljs-string">'4'</span>, <span class="hljs-string">'1'</span>, <span class="hljs-string">'-1'</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>);</span>
+<span class="hljs-operator"><span class="hljs-keyword">INSERT</span> <span class="hljs-keyword">INTO</span> locations <span class="hljs-keyword">VALUES</span>  (<span class="hljs-string">'4'</span>, <span class="hljs-string">'1'</span>, <span class="hljs-string">'1'</span>, <span class="hljs-string">'1'</span>, <span class="hljs-string">'lighttpd-1.4.33/src/lemon.c'</span>, <span class="hljs-string">'857'</span>, <span class="hljs-string">'857'</span>, <span class="hljs-string">'9'</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>);</span>
+<span class="hljs-operator"><span class="hljs-keyword">INSERT</span> <span class="hljs-keyword">INTO</span> weaknesses <span class="hljs-keyword">VALUES</span>  (<span class="hljs-string">'4'</span>, <span class="hljs-string">'1'</span>, <span class="hljs-string">'Assigned value is garbage or undefined'</span>, <span class="hljs-string">'Logic error'</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>, <span class="hljs-string">'Assigned value is garbage or undefined'</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>, <span class="hljs-keyword">null</span>);</span> </code></pre>
+
+<p>For MongoDB:</p>
+
+<ul>
+<li>You will see an array of documents similar to the following document</li>
+</ul>
+
+
+
+<pre class="prettyprint"><code class="language-sh hljs json">{
+    "<span class="hljs-attribute">BugId</span>" : <span class="hljs-value"><span class="hljs-number">1</span></span>,
+    "<span class="hljs-attribute">BugRank</span>" : <span class="hljs-value"><span class="hljs-literal">null</span></span>,
+    "<span class="hljs-attribute">plat</span>" : <span class="hljs-value"><span class="hljs-literal">null</span></span>,
+    "<span class="hljs-attribute">toolType</span>" : <span class="hljs-value"><span class="hljs-string">"clang-sa"</span></span>,
+    "<span class="hljs-attribute">Methods</span>" : <span class="hljs-value">[
+    ]</span>,
+    "<span class="hljs-attribute">classname</span>" : <span class="hljs-value"><span class="hljs-literal">null</span></span>,
+    "<span class="hljs-attribute">toolVersion</span>" : <span class="hljs-value"><span class="hljs-string">"clang version 3.7.0"</span></span>,
+    "<span class="hljs-attribute">BugSeverity</span>" : <span class="hljs-value"><span class="hljs-literal">null</span></span>,
+    "<span class="hljs-attribute">Location</span>" : <span class="hljs-value">[
+            {
+                "<span class="hljs-attribute">LocationId</span>" : <span class="hljs-value"><span class="hljs-number">1</span></span>,
+                "<span class="hljs-attribute">EndLine</span>" : <span class="hljs-value"><span class="hljs-number">857</span></span>,
+                "<span class="hljs-attribute">StartLine</span>" : <span class="hljs-value"><span class="hljs-number">857</span></span>,
+                "<span class="hljs-attribute">primary</span>" : <span class="hljs-value"><span class="hljs-literal">true</span></span>,
+                "<span class="hljs-attribute">SourceFile</span>" : <span class="hljs-value"><span class="hljs-string">"lighttpd-1.4.33/src/lemon.c"</span></span>,
+                "<span class="hljs-attribute">StartColumn</span>" : <span class="hljs-value"><span class="hljs-number">9</span>
+            </span>}
+    ]</span>,
+    "<span class="hljs-attribute">BugMessage</span>" : <span class="hljs-value"><span class="hljs-string">"Assigned value is garbage or undefined"</span></span>,
+    "<span class="hljs-attribute">BugCode</span>" : <span class="hljs-value"><span class="hljs-string">"Assigned value is garbage or undefined"</span></span>,
+    "<span class="hljs-attribute">pkgShortName</span>" : <span class="hljs-value"><span class="hljs-literal">null</span></span>,
+    "<span class="hljs-attribute">pkgVersion</span>" : <span class="hljs-value"><span class="hljs-literal">null</span></span>,
+    "<span class="hljs-attribute">assessUuid</span>" : <span class="hljs-value"><span class="hljs-string">"138ad1cb-129e-4837-a376-eed3b2ed072f"</span></span>,
+    "<span class="hljs-attribute">BugGroup</span>" : <span class="hljs-value"><span class="hljs-string">"Logic error"</span></span>,
+    "<span class="hljs-attribute">BugResolutionMsg</span>" : <span class="hljs-value"><span class="hljs-literal">null</span></span>,
+    "<span class="hljs-attribute">BugCwe</span>" : <span class="hljs-value"><span class="hljs-literal">null</span></span>,
+    "<span class="hljs-attribute">InstanceLocation</span>" : <span class="hljs-value"><span class="hljs-literal">null</span></span>,
+    "<span class="hljs-attribute">AssessmentReportFile</span>" : <span class="hljs-value"><span class="hljs-literal">null</span></span>,
+    "<span class="hljs-attribute">BuildId</span>" : <span class="hljs-value"><span class="hljs-literal">null</span>
+</span>}</code></pre>
+
+<blockquote>
+  <p><strong>Note: </strong> The above output can used to manually import data to any of the supported databases.</p>
+</blockquote>
+
+
+
+<h4 id="database-schema"><strong>Database Schema</strong></h4>
+
+
+
+<h5 id="mongodb"><strong>MongoDB</strong></h5>
+
+<ul>
+<li><strong>BugInstance</strong></li>
+</ul>
+
+
+
+<pre class="prettyprint"><code class=" hljs json">{
+    "<span class="hljs-attribute">_id</span>" : <span class="hljs-value">&lt;unique MongoDB generated id&gt;</span>,
+    "<span class="hljs-attribute">BugRank</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">plat</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">toolType</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">Methods</span>" : <span class="hljs-value">[
+        {
+            "<span class="hljs-attribute">MethodId</span>" : <span class="hljs-value">&lt;int&gt;</span>,
+            "<span class="hljs-attribute">name</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+            "<span class="hljs-attribute">primary</span>" : <span class="hljs-value">&lt;Boolean&gt;
+        </span>}
+    ]</span>,
+    "<span class="hljs-attribute">classname</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">toolVersion</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">BugSeverity</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">Location</span>" : <span class="hljs-value">[
+        {
+            "<span class="hljs-attribute">EndLine</span>" : <span class="hljs-value">&lt;int&gt;</span>,
+            "<span class="hljs-attribute">StartLine</span>" : <span class="hljs-value">&lt;int&gt;</span>,
+            "<span class="hljs-attribute">primary</span>" : <span class="hljs-value">&lt;Boolean&gt;</span>,
+            "<span class="hljs-attribute">LocationId</span>" : <span class="hljs-value">&lt;int&gt;</span>,
+            "<span class="hljs-attribute">SourceFile</span>" : <span class="hljs-value">&lt;path-String&gt;</span>,
+            "<span class="hljs-attribute">StartColumn</span>" : <span class="hljs-value">&lt;int&gt;</span>,
+            "<span class="hljs-attribute">EndColumn</span>" : <span class="hljs-value">&lt;int&gt;</span>,
+            "<span class="hljs-attribute">Explanation</span>" : <span class="hljs-value">&lt;String&gt;
+        </span>}
+    ]</span>,
+    "<span class="hljs-attribute">BugMessage</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">BugCode</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">pkgShortName</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">BugId</span>" : <span class="hljs-value">&lt;int&gt;</span>,
+    "<span class="hljs-attribute">pkgVersion</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">assessUuid</span>" : <span class="hljs-value">&lt;uuid-String&gt;</span>,
+    "<span class="hljs-attribute">BugGroup</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">BugResolutionMsg</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">BugCwe</span>" : <span class="hljs-value">&lt;String&gt;</span>,
+    "<span class="hljs-attribute">InstanceLocation</span>" : <span class="hljs-value">{
+        "<span class="hljs-attribute">Xpath</span>" : <span class="hljs-value">&lt;path-String&gt;</span>,
+        "<span class="hljs-attribute">LineNum</span>" : <span class="hljs-value">{ 
+                "<span class="hljs-attribute">Start</span>" : <span class="hljs-value">&lt;int&gt;</span>,
+                "<span class="hljs-attribute">End</span>" : <span class="hljs-value">&lt;int&gt;
+            </span>}
+    </span>}</span>,
+    "<span class="hljs-attribute">AssessmentReportFile</span>" : <span class="hljs-value">&lt;path-String&gt;</span>,
+    "<span class="hljs-attribute">BuildId</span>" : <span class="hljs-value">&lt;int&gt;
+</span>}</code></pre>
+
+<ul>
+<li><strong>Metric</strong>  </li>
+</ul>
+
+
+
+<pre class="prettyprint"><code class=" hljs json">{  
+    "<span class="hljs-attribute">_id</span>" : <span class="hljs-value">&lt;unique MongoDB generated id&gt;</span>,
+    "<span class="hljs-attribute">SourceFile</span>" : <span class="hljs-value">&lt;path-String&gt;</span>, 
+    "<span class="hljs-attribute">Type</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">pkgVersion</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">assessUuid</span>" : <span class="hljs-value">&lt;uuid-String&gt;</span>,  
+    "<span class="hljs-attribute">toolType</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">toolVersion</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">Value</span>" : <span class="hljs-value">&lt;String&gt;</span>,   
+    "<span class="hljs-attribute">plat</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">pkgShortName</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">MetricId</span>" : <span class="hljs-value">&lt;int&gt;</span>,  
+    "<span class="hljs-attribute">Method</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">Class</span>" : <span class="hljs-value">&lt;String&gt;  
+</span>}  </code></pre>
+
+<ul>
+<li><strong>If the package does not contain any BugInstance or Metric</strong></li>
+</ul>
+
+
+
+<pre class="prettyprint"><code class=" hljs json">{  
+    "<span class="hljs-attribute">_id</span>" : <span class="hljs-value">&lt;unique MongoDB generated id&gt;</span>, 
+    "<span class="hljs-attribute">pkgVersion</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">assessUuid</span>" : <span class="hljs-value">&lt;uuid-String&gt;</span>,  
+    "<span class="hljs-attribute">toolType</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">toolVersion</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">plat</span>" : <span class="hljs-value">&lt;String&gt;</span>,  
+    "<span class="hljs-attribute">pkgShortName</span>" : <span class="hljs-value">&lt;String&gt;
+</span>}</code></pre>
+
+
+
+<h5 id="schema-sql-databases"><strong>Schema (SQL databases)</strong></h5>
+
+<p>Below is the schema for SQLite database. All other SQL databases have same schema with few minor changes for primary key. But, the column names and types is same for all SQL databases.</p>
+
+
+
+<pre class="prettyprint"><code class=" hljs sql"><span class="hljs-operator"><span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">TABLE</span> assess (
+        assessId         <span class="hljs-keyword">integer</span> <span class="hljs-keyword">PRIMARY</span> <span class="hljs-keyword">KEY</span> AUTOINCREMENT,
+        assessUuid       text       <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        pkgShortName     text,
+        pkgVersion       text,
+        toolType         text       <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        toolVersion      text,
+        plat             text
+);</span>
+<span class="hljs-operator"><span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">TABLE</span> locations (
+        assessId         <span class="hljs-keyword">integer</span>    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        bugId            <span class="hljs-keyword">integer</span>    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        locId            <span class="hljs-keyword">integer</span>    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        isPrimary        boolean    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        sourceFile       text       <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        startLine        <span class="hljs-keyword">integer</span>,
+        endLine          <span class="hljs-keyword">integer</span>,
+        startCol         <span class="hljs-keyword">integer</span>,
+        endCol           <span class="hljs-keyword">integer</span>,
+        explanation      text,
+        <span class="hljs-keyword">PRIMARY</span> <span class="hljs-keyword">KEY</span> (assessId, bugId, locId)    
+);</span>
+<span class="hljs-operator"><span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">TABLE</span> functions ( 
+        assessId         <span class="hljs-keyword">integer</span>    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        sourceFile       text,
+        class            text,
+        method           text,
+        startLine        <span class="hljs-keyword">integer</span>,
+        endLine          <span class="hljs-keyword">integer</span>
+);</span>
+<span class="hljs-operator"><span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">TABLE</span> weaknesses (
+        assessId         <span class="hljs-keyword">integer</span>    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        bugId            <span class="hljs-keyword">integer</span>    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        bugCode          text,
+        bugGroup         text,
+        bugRank          text,
+        bugSeverity      text,
+        bugMessage       text,
+        bugResolutionMsg text,
+        classname        text,
+        bugCwe           text,
+        AssessReportFile text,
+        BuildId          <span class="hljs-keyword">integer</span>,
+        ILXpath          text,
+        ILStart          <span class="hljs-keyword">integer</span>,
+        ILEnd            <span class="hljs-keyword">integer</span>,
+        <span class="hljs-keyword">PRIMARY</span> <span class="hljs-keyword">KEY</span> (assessId, bugId)   
+);</span>
+<span class="hljs-operator"><span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">TABLE</span> methods (
+        assessId         <span class="hljs-keyword">integer</span>    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        bugId            <span class="hljs-keyword">integer</span>    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        methodId         <span class="hljs-keyword">integer</span>,
+        isPrimary        boolean,
+        methodName       text,
+        <span class="hljs-keyword">PRIMARY</span> <span class="hljs-keyword">KEY</span> (assessId, bugId, methodId) 
+);</span>
+<span class="hljs-operator"><span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">TABLE</span> metrics (
+        assessId         <span class="hljs-keyword">integer</span>    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        metricId         <span class="hljs-keyword">integer</span>    <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">NULL</span>,
+        sourceFile       text,
+        class            text,
+        method           text,
+        type             text,
+        strVal           text,
+        numVal           <span class="hljs-keyword">real</span>,
+        <span class="hljs-keyword">PRIMARY</span> <span class="hljs-keyword">KEY</span> (assessId, metricId)    
+);</span></code></pre>
+
+
+
+<h4 id="appendix-a-database-installation"><strong>Appendix A: Database Installation</strong></h4>
+
+
+
+<h4 id="installing-mongodb">Installing MongoDB</h4>
+
+<p>If you do not have MongoDB installed already, please follow the installation guide at <a href="https://docs.mongodb.com/manual/installation/">https://docs.mongodb.com/manual/installation/</a></p>
+
+
+
+<h5 id="installing-mongodb-on-rhel-based-platforms">Installing MongoDB on RHEL based platforms</h5>
+
+<p>For installation specific to RHEL based platforms please see <a href="https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/">https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/</a></p>
+
+<blockquote>
+  <p>NOTE: On <code>rhel-6.4-64</code> platform, executing <code>sudo yum install -y mongodb</code> will install an old version (2.4.14) of MongoDB. To install the latest version (3.2.8 or above) of MongoDB, please follow the steps in the section <strong>Configure the package management system (yum)</strong> in the tutorial <a href="https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/">https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/</a>. This program is tested on MongoDB version (2.4.14, 3.0.12, and 3.2.8) with perl MongoDB driver version (1.4.2, and 1.4.4).</p>
+</blockquote>
+
+<p>Example: To install <code>3.2.x</code> version of MongoDB on <code>rhel-6.4-64</code>:</p>
+
+<p>Create a file named <code>/etc/yum.repos.d/mongodb-org-3.2.repo</code> and add the following content to the file </p>
+
+
+
+<pre class="prettyprint"><code class="language-conf hljs ini"><span class="hljs-title">[mongodb-org-3.2]</span>
+<span class="hljs-setting">name=<span class="hljs-value">MongoDB Repository</span></span>
+<span class="hljs-setting">baseurl=<span class="hljs-value">https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/<span class="hljs-number">3.2</span>/x86_64/</span></span>
+<span class="hljs-setting">gpgcheck=<span class="hljs-value"><span class="hljs-number">1</span></span></span>
+<span class="hljs-setting">enabled=<span class="hljs-value"><span class="hljs-number">1</span></span></span>
+<span class="hljs-setting">gpgkey=<span class="hljs-value">https://www.mongodb.org/static/pgp/server-<span class="hljs-number">3.2</span>.asc</span></span></code></pre>
+
+<p>Execute the following shell command to install MongoDB:</p>
+
+
+
+<pre class="prettyprint"><code class="language-sh hljs lasso"><span class="hljs-subst">%</span> sudo yum install <span class="hljs-attribute">-y</span> mongodb<span class="hljs-attribute">-org</span></code></pre>
+
+
+
+<h5 id="check-if-the-mongodb-server-is-running">Check if the MongoDB server is running</h5>
+
+<p>If the installation is successful, please execute the following command to check if the MongoDB server is running.</p>
+
+
+
+<pre class="prettyprint"><code class="language-sh hljs vala"><span class="hljs-preprocessor"># Invokes Mongo Shell</span>
+% mongo</code></pre>
+
+<p>If the above command fails with a message <strong>exception: connect failed</strong> then, MongoDB may not be running.</p>
+
+<p>Execute the following command to run MongoDB:</p>
+
+
+
+<pre class="prettyprint"><code class="language-sh hljs bash">% <span class="hljs-built_in">sudo</span> /etc/init.d/mongod start</code></pre>
+
+<p>By default, MongoDB server listens on <code>localhost:27017</code> network interface. There are various options to access MongoDB across the network. See the MongoDB documentation for more information  <a href="https://docs.mongodb.com/manual/reference/configuration-options/">https://docs.mongodb.com/manual/reference/configuration-options/</a>. </p>
+
+
+
+<h5 id="authentication">Authentication</h5>
+
+<p>By default, MongoDB does not require <em>root password or user accounts</em> to create databases and insert documents. If you like to authenticate and authorize users please see <a href="https://docs.mongodb.com/manual/tutorial/enable-authentication/">https://docs.mongodb.com/manual/tutorial/enable-authentication/</a>.</p>
+
+<blockquote>
+  <p><strong>Note:</strong> If you notice any authentication related error messages and you are sure that password and username entered are correct, please check if the <code>authenticationDatabase</code> used for the user is same as the database that you are trying to access</p>
+</blockquote>
+
+
+
+<h4 id="installing-postgresql">Installing PostgreSQL</h4>
+
+<p>If you don't have PostgreSQL installed already, please follow the installation guide at <a href="https://www.postgresql.org/download/linux/redhat/">https://www.postgresql.org/download/linux/redhat/</a></p>
+
+
+
+<h4 id="installing-mysql">Installing MySQL</h4>
+
+<p>If you don't have MySQL installed already, please follow the installation guide at <a href="https://dev.mysql.com/doc/mysql-repo-excerpt/5.6/en/linux-installation-yum-repo.html">https://dev.mysql.com/doc/mysql-repo-excerpt/5.6/en/linux-installation-yum-repo.html</a></p>
+
+
+
+<h4 id="installing-mariadb">Installing MariaDB</h4>
+
+<p>If you don't have MariaDB installed already, please follow the installation guide at <a href="https://mariadb.com/kb/en/mariadb/yum/">https://mariadb.com/kb/en/mariadb/yum/</a></p>
+
+
+
+<h4 id="appendix-b-perl-drivers-installation"><strong>Appendix B: Perl Drivers Installation</strong></h4>
+
+
+
+<h4 id="installing-perl-drivers">Installing Perl drivers</h4>
+
+<p><code>scarf-to-db</code> program uses Perl drivers. Install the following Perl drivers on the machine that you would want to call scarf-to-db from <br>
+1. DBI <br>
+2. DBD::Pg <br>
+3. DBD::MySQL <br>
+4. DBD::SQLite <br>
+5. MongoDB <br>
+6. YAML  <br>
+7. Config::AutoConf <br>
+8. JSON::MaybeXS</p>
+
+<p>On <code>rhel-6.4-64</code> platform, execute the following commands to install the drivers using CPAN</p>
+
+
+
+<pre class="prettyprint"><code class="language-sh hljs css"><span class="hljs-tag">sudo</span> <span class="hljs-tag">cpan</span> <span class="hljs-tag">DBI</span> <span class="hljs-tag">DBD</span><span class="hljs-pseudo">::Pg</span> <span class="hljs-tag">MongoDB</span> <span class="hljs-tag">DBD</span><span class="hljs-pseudo">::MySQL</span> <span class="hljs-tag">DBD</span><span class="hljs-pseudo">::SQLite</span></code></pre>
+
+<blockquote>
+  <p>NOTE: On some <code>rhel-6.4-64</code> machines, users may also have to install <code>YAML and Config::AutoConf</code> packages from CPAN. To install the <code>YAML and Config::AutoConf</code> package, execute the following shell command:</p>
+</blockquote>
+
+
+
+<pre class="prettyprint"><code class="language-sh hljs bash">% <span class="hljs-built_in">sudo</span> cpan YAML Config::AutoConf</code></pre>
+
+<blockquote>
+  <p>NOTE: The above command may ask for user confirmation to install packages and its dependencies too many times. To avoid typing <code>yes</code> on the CPAN console too many time, please run the following commands:</p>
+</blockquote>
+
+
+
+<pre class="prettyprint"><code class="language-sh hljs bash">% <span class="hljs-built_in">sudo</span> perl -MCPAN <span class="hljs-operator">-e</span> shell  <span class="hljs-comment"># Opens up a CPAN shell</span>
+    cpan[<span class="hljs-number">1</span>]&gt; o conf prerequisites_policy follow
+    cpan[<span class="hljs-number">2</span>]&gt; o conf build_requires_install_policy yes
+    cpan[<span class="hljs-number">3</span>]&gt; o conf commit</code></pre>
+
+<p>For more information on how to avoid the <code>yes</code> confirmation dialog please see <a href="https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/">https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/</a>.  </p>
+
+<blockquote>
+  <p>NOTE: Using the CPAN command to install perl MongoDB driver you can install latest version of the driver. This program is tested on versions (1.4.2, and 1.4.4(latest)).</p>
+</blockquote>
