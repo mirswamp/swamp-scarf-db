@@ -40,6 +40,13 @@ sub main
     my ($pkg_name, $pkg_ver, $plat) = 
 	($options{pkg_name}, $options{pkg_version}, $options{platform});
    
+    # creating a hash for optional options
+    my %opt = (
+	assessReportFile	=> $options{include_assess_report_file},
+	buildid			=> $options{include_buildid},
+	instanceLocation	=> $options{include_instance_location},
+    );
+
     # printing out the execution commands
     if (defined $options{just_print} && defined $options{create_tables})  {
 	justPrint('SQL', 'create', $options{db_type});
@@ -89,7 +96,7 @@ sub main
 			$options{db_host}, $options{db_port}, $options{db_username}, 
 			$options{db_password}, $options{db_commits}, \%names,
 			$options{just_print}, $options{verbose}, $insert,
-			$options{assess_id}, $options{output_file}); 
+			$options{assess_id}, $options{output_file}, \%opt); 
 	
 	} else {
 	    print "Please fix the above errors\n";
@@ -101,7 +108,7 @@ sub main
 		$options{db_host}, $options{db_port}, $options{db_username}, 
 		$options{db_password}, $options{db_commits}, \$options{scarf}, 
 		$options{just_print}, $options{verbose}, $insert,
-		$options{assess_id}, $options{output_file}); 
+		$options{assess_id}, $options{output_file}, \%opt); 
     
     } else {
 	print "Please input the name of the scarf file with correct extension\n";
@@ -112,28 +119,31 @@ sub main
 sub ProcessOptions
 {
     my %optionDefaults = (
-	help            => 0,
-	version         => 0,
-	auth_conf   	=> 'scarf-to-db-auth.conf',
-	conf		=> 'scarf-to-db.conf',
-	db_type		=> 'mongodb',
-	db_host		=> 'localhost',
-	create_tables	=> undef,
-	delete_tables	=> undef,
-	db_port		=> undef,
-	db_commits	=> undef,
-	db_name		=> undef,
-	scarf		=> undef,
-	pkg_name	=> undef,
-	pkg_version	=> undef,
-	platform	=> undef,
-	just_print	=> undef,
-	db_username	=> undef,
-	db_password	=> undef,
-	test_auth	=> undef,
-	verbose		=> undef,
-	assess_id	=> undef,
-	output_file	=> undef,
+	help            		=> 0,
+	version         		=> 0,
+	auth_conf   			=> 'scarf-to-db-auth.conf',
+	conf				=> 'scarf-to-db.conf',
+	db_type				=> 'mongodb',
+	db_host				=> 'localhost',
+	create_tables			=> undef,
+	delete_tables			=> undef,
+	db_port				=> undef,
+	db_commits			=> undef,
+	db_name				=> undef,
+	scarf				=> undef,
+	pkg_name			=> undef,
+	pkg_version			=> undef,
+	platform			=> undef,
+	just_print			=> undef,
+	db_username			=> undef,
+	db_password			=> undef,
+	test_auth			=> undef,
+	verbose				=> undef,
+	assess_id			=> undef,
+	output_file			=> undef,
+	include_assess_report_file	=> undef,
+	include_buildid			=> undef,
+	include_instance_location	=> undef,
 	);
 
     # for options that contain a '-', make the first value be the
@@ -164,6 +174,9 @@ sub ProcessOptions
 	"assess_id|assess-id=s",
 	"verbose|V!",
 	"output_file|output-file=s",
+	"include_assess_report_file|include-assess-report-file!",
+	"include_buildid|include-buildid!",
+	"include_instance_location|include-instance-location!",
     );
 
     
@@ -346,40 +359,43 @@ Parse the given XML SCARF file and save the results in any of the
 following databases: MongoDB, PostgreSQL, MariaDB, MySQL or SQLite
 
 options:
-    -h [ --help ]               print this message
-    -v [ --version ]            print version
-    --auth-conf <value>		path to the conf file containing the username
-				and password for database
-    --conf <value>  		path to the conf file containing the database 
-				parameters
-    --db-type <value>	   	this can be any of the databases supported, 
-				default: mongodb
-    --db-host <value>		hostname of the DBMS server, default: localhost
-    --create-tables		creates tables for SQL databases
-    --delete-tables		deletes tables for SQL databases
-    --db-port <value>		port on which the DBMS server listens on, 
-				default: 27017 (MongoDB), 5432 (PostgreSQL) 
-				or 3306 (MySQL, MariaDB),
-    --db-commits <value>	max number of weaknesses to commit at once
-				default: INF(infinity) for SQL databases,
-				1500 for MongoDB
-    --db-name <value>		name of the db in which you want to save the 
-				scarf results. For eg: test, scarf, swamp etc. 
-				MongoDB and SQLite creates the db if it does not 
-				already exist
-    -s [ --scarf ] <value>      path to the SCARF results XML 
-				(parsed_results.xml) or parsed_results.conf file
-    --pkg-name <value>		name of the package that was assessed
-    --pkg-version <value>	version of the package that was assessed
-    --platform <value>		platform the assessment was run on
-    -n [ --just-print ]		prints out create, insert or delete statements 
-				depending the other argument passed with this 
-				option
-    -V [ --verbose ]		inserts and print out the insert statements for 
-				the given SCARF file
-    --assess-id <value>		unique assessId for SQL databases
-    --output-file <value> 	name of the file to store data insertion, deletion 
-				or creation commands, default: STDOUT
+    -h [ --help ]                 print this message
+    -v [ --version ]              print version
+    --auth-conf <value>		  path to the conf file containing the username
+				  and password for database
+    --conf <value>  		  path to the conf file containing the database 
+				  parameters
+    --db-type <value>	   	  this can be any of the databases supported, 
+				  default: mongodb
+    --db-host <value>		  hostname of the DBMS server, default: localhost
+    --create-tables		  creates tables for SQL databases
+    --delete-tables		  deletes tables for SQL databases
+    --db-port <value>		  port on which the DBMS server listens on, 
+				  default: 27017 (MongoDB), 5432 (PostgreSQL) 
+				  or 3306 (MySQL, MariaDB),
+    --db-commits <value>	  max number of weaknesses to commit at once
+				  default: INF(infinity) for SQL databases,
+				  1500 for MongoDB
+    --db-name <value>		  name of the db in which you want to save the 
+				  scarf results. For eg: test, scarf, swamp etc. 
+				  MongoDB and SQLite creates the db if it does not 
+				  already exist
+    -s [ --scarf ] <value>        path to the SCARF results XML 
+				  (parsed_results.xml) or parsed_results.conf file
+    --pkg-name <value>		  name of the package that was assessed
+    --pkg-version <value>	  version of the package that was assessed
+    --platform <value>		  platform the assessment was run on
+    -n [ --just-print ]		  prints out create, insert or delete statements 
+				  depending the other argument passed with this 
+				  option
+    -V [ --verbose ]		  inserts and print out the insert statements for 
+				  the given SCARF file
+    --assess-id <value>		  unique assessId for SQL databases
+    --output-file <value> 	  name of the file to store data insertion, deletion 
+				  or creation commands, default: STDOUT
+    --include-assess-report-file  adds AssessmentReportFile name, default: null  
+    --include-buildid		  adds BuildId, default: null
+    --include_instance_location	  adds InstanceLocation information, default: null
 
 Authentication options:
     --db-username <value>	Username for DBMS
@@ -485,14 +501,19 @@ sub SQLStatements
     my %insertStatements = (
         assess      	=> "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, " .
 			    "toolversion, plat) VALUES (?, ?, ?, ?, ?, ?);",
-	assess1     	=> "INSERT INTO assess VALUES (?, ?, ?, ?, ?, ?, ?);",
-	weaknesses 	=> "INSERT INTO weaknesses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+	assess1     	=> "INSERT INTO assess VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+	weaknesses 	=> "INSERT INTO weaknesses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " .
+			    "?, ?, ?, ?, ?);",
 	locations   	=> "INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
 	methods     	=> "INSERT INTO methods VALUES (?, ?, ?, ?, ?);",
 	metrics     	=> "INSERT INTO metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
 	functions   	=> "INSERT INTO functions VALUES (?, ?, ?, ?, ?, ?);",	
     );
-
+=pod
+assess      	=> "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, " .
+			    "toolversion, plat, assessreportfile, buildid, instanceloction) " .
+			    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
+=cut
     my $primaryKey = "BIGSERIAL PRIMARY KEY";
 
     if ($db_type eq 'mariadb' || $db_type eq 'mysql')  {
@@ -512,6 +533,11 @@ sub SQLStatements
 			    toolType		text			NOT NULL,
 			    toolVersion		text,
 			    plat		text
+			    assessreportfile	text,
+			    buildid		text,
+			    xpath		text,
+			    startlinenum	int,
+			    endlinenum		int
 			    );),
 	    
         weaknesses	=> qq(CREATE TABLE weaknesses (
@@ -525,6 +551,11 @@ sub SQLStatements
 			    bugResolutionMsg	text,
 			    classname		text,
 			    bugCwe		text,
+			    AssessReportFile	text,
+			    BuildId		integer,
+			    ILXpath		text,
+			    ILStart		integer,
+			    ILEnd		integer,
 			    PRIMARY KEY (assessId, bugId)	
 			    );),
 
@@ -638,23 +669,26 @@ sub parse_files
     # Getting the name of the file and type
     my ($name, $pkg_name, $pkg_ver, $plat, $database, $host, $port, 
 	$user, $pass, $commits, $names, $justprint, $verbose, $insert,
-	$assessId, $outputFile) = @_;
+	$assessId, $outputFile, $options) = @_;
     my $id;
     my %data = (
-	pkgName		=> $pkg_name,
-	pkgVer 		=> $pkg_ver,
-	plat		=> $plat,
-	db_count	=> 0,
-	name		=> $database,
-	db_commits	=> $commits,
-	justprint	=> $justprint,
-	verbose		=> $verbose,
-	insert		=> $insert,
-	assessId	=> $assessId,
-	output 		=> $outputFile,
-	count 		=> 0,
+	pkgName			=> $pkg_name,
+	pkgVer 			=> $pkg_ver,
+	plat			=> $plat,
+	db_count		=> 0,
+	name			=> $database,
+	db_commits		=> $commits,
+	justprint		=> $justprint,
+	verbose			=> $verbose,
+	insert			=> $insert,
+	assessId		=> $assessId,
+	output 			=> $outputFile,
+	count 			=> 0,
+	assessReportFile	=> $options->{assessReportFile},
+	buildid			=> $options->{buildid},
+	instanceLocation	=> $options->{instanceLocation},
     );
-
+    
     my $dbh;
     
     if ($data{verbose} || $data{insert}) {
@@ -730,7 +764,6 @@ sub parse_files
 sub init
 {
     my ($details, $data) = @_;
-
     $data->{toolName} = $details->{tool_name};
     $data->{SQL} = 'SQL';
     my $insert; 
@@ -960,12 +993,36 @@ sub bug
 	$classname = $bug->{ClassName};
     }
     
+    my ($assessReportFile, $buildid, $xpath, $startLine, $endLine) =
+	(undef, undef, undef, undef, undef);
+
+    if (defined $data->{assessReportFile}) {
+	$assessReportFile = $bug->{AssessmentReportFile};
+    }
+    
+    if (defined $data->{buildid}) {
+	$buildid = $bug->{BuildId};
+    }
+
+    if (defined $data->{instanceLocation}) {
+	if (exists $bug->{InstanceLocation}) {
+	     if (exists $bug->{InstanceLocation}->{Xpath}) {
+		$xpath = $bug->{InstanceLocation}->{Xpath};
+	    }
+	    if (exists $bug->{InstanceLocation}->{LineNum}) {
+		$startLine = $bug->{InstanceLocation}->{LineNum}->{Start};
+		$endLine = $bug->{InstanceLocation}->{LineNum}->{End};
+	    }
+	}
+    }
+
     if (exists $bug->{CweIds})  {	
 	foreach my $cweid ( $bug->{CweIds} )  {  
 	    if (defined($data->{verbose}) || defined($data->{insert})) {
 		my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
 			    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
-			    $res_sug, $classname, $cweid);
+			    $res_sug, $classname, $cweid, $assessReportFile, $buildid,
+			    $xpath, $startLine, $endLine);
 
 		if ($check < 0)  {
 		    die "Unable to insert\n";
@@ -975,7 +1032,9 @@ sub bug
 	    if (defined($data->{verbose}) || defined($data->{justprint})) {
 		my @values = ($data->{assessId}, $bug->{BugId}, $bug_code, $bug_group, 
 				$bug_rank, $bug_sev, $bug->{BugMessage}, $res_sug, 
-				$classname, $cweid);
+				$classname, $cweid, $assessReportFile, $buildid,
+				$xpath, $startLine, $endLine);
+
 		justPrint('SQL', 'print', $data->{name}, 'weaknesses', $data->{output}, 
 			    \$data->{count}, \@values);
 	    }
@@ -985,7 +1044,8 @@ sub bug
 	    if (defined($data->{verbose}) || defined($data->{insert})) {
 		my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
 			    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
-			    $res_sug, $classname, $cweid);
+			    $res_sug, $classname, $cweid, $assessReportFile, $buildid,
+			    $xpath, $startLine, $endLine);
 	    
 		if ($check < 0)  {
 		    die "Unable to insert\n";
@@ -995,7 +1055,9 @@ sub bug
 	    if (defined($data->{verbose}) || defined($data->{justprint})) {
 		my @values = ($data->{assessId}, $bug->{BugId}, $bug_code, $bug_group, 
 				$bug_rank, $bug_sev, $bug->{BugMessage}, $res_sug, 
-				$classname, $cweid);
+				$classname, $cweid, $assessReportFile, $buildid,
+				$xpath, $startLine, $endLine);
+
 		justPrint('SQL', 'print', $data->{name}, 'weaknesses', $data->{output}, 
 			    \$data->{count}, \@values);
 	    }
@@ -1073,6 +1135,22 @@ sub metricMongo
 sub bugMongo
 {
     my ($bug, $data) = @_;
+    
+    my ($assessReportFile, $buildid, $instanceLocation) = (undef, undef, undef);
+
+    if (defined $data->{assessReportFile}) {
+	$assessReportFile = $bug->{AssessmentReportFile};
+    }
+    
+    if (defined $data->{buildid}) {
+	$buildid = $bug->{BuildId};
+    }
+
+    if (defined $data->{instanceLocation}) {
+	if (exists $bug->{InstanceLocation}) {
+	    $instanceLocation = $bug->{InstanceLocation};
+	}
+    }
    
     $data->{bug} = 1;
     my $bug_code = undef;
@@ -1146,24 +1224,27 @@ sub bugMongo
 	}
     }
 
-    my %bugInstance = ( assessUuid   	=> $data->{assessUuid},
-			pkgShortName 	=> $data->{pkgName},
-			pkgVersion   	=> $data->{pkgVer},
-			toolType     	=> $data->{toolName},
-			toolVersion  	=> $data->{toolVersion},
-			plat         	=> $data->{plat},
-			BugMessage   	=> $bug->{BugMessage},
-			BugGroup     	=> $bug_group,
-			Location     	=> $bug->{BugLocations},
-			Methods      	=> $bug->{Methods},
-			BugId 	        => int($bug->{BugId}),
-			BugCode          => $bug_code,
-			BugRank          => $bug_rank,
-			BugSeverity      => $bug_sev,
-			BugResolutionMsg => $res_sug,
-			classname        => $classname,		
-			BugCwe           => $bug->{CweIds},
-			);
+    my %bugInstance = ( assessUuid   		=> $data->{assessUuid},
+			pkgShortName 		=> $data->{pkgName},
+			pkgVersion   		=> $data->{pkgVer},
+			toolType     		=> $data->{toolName},
+			toolVersion  		=> $data->{toolVersion},
+			plat         		=> $data->{plat},
+			BugMessage   		=> $bug->{BugMessage},
+			BugGroup     		=> $bug_group,
+			Location     		=> $bug->{BugLocations},
+			Methods      		=> $bug->{Methods},
+			BugId 	        	=> int($bug->{BugId}),
+			BugCode          	=> $bug_code,
+			BugRank          	=> $bug_rank,
+			BugSeverity      	=> $bug_sev,
+			BugResolutionMsg 	=> $res_sug,
+			classname        	=> $classname,		
+			BugCwe           	=> $bug->{CweIds},
+			AssessmentReportFile	=> $assessReportFile,
+			BuildId			=> $buildid,
+			InstanceLocation	=> $instanceLocation,
+    );
     
     if (defined($data->{verbose}) || defined($data->{insert})) {
         push @{$data->{scarf}}, \%bugInstance;

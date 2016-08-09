@@ -34,6 +34,9 @@ The purpose of `scarf-to-db.conf` file is to configure the database, but other o
 | `db-name=<name>`  | Name of the database in which you want to save scarf results to. For eg: test, scarf, swamp. MongoDB and SQLite creates the database if it does not already exists (For SQLite the path to the SQLite database file can be specified using this option). **(REQUIRED)** |  
 | `db-commits=<max>` | Specifies the number of records or documents to be inserted atomically, default: 1500 (MongoDB) or INF (infinity) (SQL databases) (**Note:** For MongoDB the amount of memory used depends on the value of this option. If you notice high memory usage, try reducing the value of this option. If you are using a value other than INF, partial data may be visible to database readers, and will be permanent if `scarf-to-db` is interrupted before completion.|  
 | `auth-conf=<path>` | Path to _scarf-to-db-auth.conf_ file described in the next step (default location: current directory, default filename: scarf-to-db-auth.conf) |
+| `include-assess-report-file=<value>` | Adds the AssessmentReportFile name for the given bug instance (default: null) |
+| `include-buildid=<value>` | Adds BuildId for the given bug instance (default: null) |
+| `include-instance-location=<value>` | Adds the InstanceLocation information for the given bug instance (default: null) |
 
 ##### **scarf-to-db-auth.conf**
 
@@ -53,7 +56,7 @@ The command line options can be used to specify any of the previous configuratio
 
 | Option | Description |
 |:---|:---|
-| `--scarf=<path>` or `-s <path>`   | Path to the SCARF results XML (parsed\_results.xml) file or parsed\_results.conf file  (**Note:** When test is run on a package it produces two files named, parsed\_results.conf and parsed\_results.tar.gz. parsed\_results.tar.gz file contains a file named, parsed\_results.xml file. One can specify the path to parsed\_results.conf file and `scarf-to-db` will automatically find the XML file or one can untar the parsed\_results.tar.gz and provide the path to XML file using this option) **(REQUIRED)**| 
+| `--scarf=<path>` or `-s <path>`   | Path to the SCARF results XML or JSON (parsed\_results.xml or parsed\_results.json) file or parsed\_results.conf file  (**Note:** When test is run on a package it produces two files named, parsed\_results.conf and parsed\_results.tar.gz. parsed\_results.tar.gz file contains a file named, parsed\_results.xml file. One can specify the path to parsed\_results.conf file and `scarf-to-db` will automatically find the XML file or one can untar the parsed\_results.tar.gz and provide the path to XML or JSON file using this option) **(REQUIRED)**| 
 | `--conf=<path>` | Path to Config file containing database parameters (default location: current directory, default filename: scarf-to-db.conf) |
 | `--help` or `-h` | Prints out the help menu on the console and exits |  
 | `--version` or `-v` |  Prints out the version of the program and exits |  
@@ -119,7 +122,7 @@ INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, toolversion,
 ```
 INSERT INTO methods VALUES  ('4', '1', '-1', null, null);
 INSERT INTO locations VALUES  ('4', '1', '1', '1', 'lighttpd-1.4.33/src/lemon.c', '857', '857', '9', null, null);
-INSERT INTO weaknesses VALUES  ('4', '1', 'Assigned value is garbage or undefined', 'Logic error', null, null, 'Assigned value is garbage or undefined', null, null, null); 
+INSERT INTO weaknesses VALUES  ('4', '1', 'Assigned value is garbage or undefined', 'Logic error', null, null, 'Assigned value is garbage or undefined', null, null, null, null, null, null, null, null); 
 ```
 
 For MongoDB:
@@ -154,7 +157,10 @@ For MongoDB:
 	"assessUuid" : "138ad1cb-129e-4837-a376-eed3b2ed072f",
 	"BugGroup" : "Logic error",
 	"BugResolutionMsg" : null,
-	"BugCwe" : null
+	"BugCwe" : null,
+	"InstanceLocation" : null,
+	"AssessmentReportFile" : null,
+	"BuildId" : null
 }
 ```
 
@@ -201,7 +207,16 @@ For MongoDB:
 	"assessUuid" : <uuid-String>,
 	"BugGroup" : <String>,
 	"BugResolutionMsg" : <String>,
-	"BugCwe" : <String>
+	"BugCwe" : <String>,
+	"InstanceLocation" : {
+		"Xpath" : <path-String>,
+		"LineNum" : { 
+	            "Start" : <int>,
+	            "End" : <int>
+	        }
+	},
+	"AssessmentReportFile" : <path-String>,
+	"BuildId" : <int>
 }
 ```
 
@@ -285,6 +300,11 @@ CREATE TABLE weaknesses (
 		bugResolutionMsg text,
 		classname		 text,
 		bugCwe		     text,
+		AssessReportFile text,
+        BuildId          integer,
+        ILXpath          text,
+        ILStart          integer,
+        ILEnd            integer,
 		PRIMARY KEY (assessId, bugId)	
 );
 CREATE TABLE methods (
