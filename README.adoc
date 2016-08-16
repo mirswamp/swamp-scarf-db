@@ -1,0 +1,546 @@
+== `scarf-to-db User Guide`
+
+**August 12, 2016** +
+**Authors:** __Pranav Mehendiratta, James A. Kupsch__ +
+
+This document describes scarf-to-db a program that uploads SCARF (SWAMP Common Assessment Result Format) results into a NoSQL database (MongoDB) or SQL databases (PostgreSQL, MySQL, MariaDB or SQLite3). Uploading SCARF results into any DBMS involves the following steps:
+
+1.  <<appendix-a, Install the DBMS (see Appendix A)>>
+2.  <<appendix-b, Install Perl drivers (see Appendix B)>>
+3.  <<scarf-to-db-configuration, Configure scarf-to-db>>
+4.  <<database-table-creation-or-deletion-for-sql-databases, Create database tables (for SQL databases)>>
+5.  <<saving-the-scarf-results-into-a-database, Use scarf-to-db to add SCARF results to DBMS>>
+
+The rest of this document describes the above steps, the database schemas, and deleting SQL database tables.
+
+:numbered:
+
+[[scarf-to-db-configuration]]
+=== **scarf-to-db configuration**
+
+To operate, scarf-to-db requires configuration. The configuration can be set using the command line, or via configuration files. scarf-to-db supports two configuration files: _scarf-to-db.conf_ for database configuration, and _scarf-to-db-auth.conf_ for database credential data (the permissions of this file should be restricted as it contains sensitive information). The use of the configuration files is optional, but recommended.
+
+The value for an option is determined by first one of these that sets the value: 1) command line options, 2) the _scarf-to-db-auth.conf_ configuration file, 3) the _scarf-to-db.conf_ file, and finally 4) built-in defaults.
+
+The location of configuration files can be set from an option before the option file is processed. If the configuration file location is explicitly set, it is an error if the file does not exist, but if the value is the default value, the configuration file is skipped if not present.
+
+The remainder of these sections describes each option and is grouped by the most appropriate place to set the option starting with the scarf-to-db.conf options, then scarf-to-db-auth.conf options, and finally options most appropriately passed as command line options.
+
+[[scarf-to-db.conf]]
+==== **scarf-to-db.conf**
+
+The purpose of scarf-to-db.conf file is to configure the database, but other options can also be specified in this file to set their default values. The database related settings that can be configured using this file are as follows:
+
+[cols="<25%,<75%",options="header",]
+|=======================================================================
+|Option | Description
+|`db-type=<type>` | Database type - It can be any of the databases
+supported, default: mongodb
+|`db-host=<host>` | Hostname of the DBMS server, default: localhost
+|`db-port=<port>`| Port on which the DBMS server listens on, + 
+default: 27017 (MongoDB), 5432 (PostgreSQL) or 3306 (MySQL, MariaDB)
+|`db-name=<name>`| Name of the database in which you want to save scarf
+results to. + 
+For eg: test, scarf, swamp. MongoDB and SQLite creates the
+database if it does not already exists (For SQLite the path to the SQLite database file can be specified using this option). *(REQUIRED)*
+|`db-commits=<max>` |Specifies the number of records or documents to be
+inserted atomically, default: 1500 (MongoDB) or INF (infinity) (SQL
+databases) +
+(**Note:** For MongoDB the amount of memory used depends on the value of
+this option. If you notice high memory usage, try reducing the value of
+this option. If you are using a value other than INF, partial data may
+be visible to database readers, and will be permanent if scarf-to-db
+is interrupted before completion.)
+|`auth-conf=<path>`| Path to _scarf-to-db-auth.conf_ file described in the
+next step (default location: current directory, default filename:
+scarf-to-db-auth.conf)
+|`include-assess-report-file=<value>`| Adds the AssessmentReportFile name
+for the given bug instance, if set to 1. If value is 0, null will be
+inserted in the database (default: 0)
+|`include-buildid=<value>`| Adds BuildId for the given bug instance, if set
+to 1. If value is 0, null will be inserted in the database (default: 0)
+|`include-instance-location=<value>`| Adds the InstanceLocation
+information for the given bug instance, if set to 1. If value is 0, null
+will be inserted in the database (default: 0)
+|=======================================================================
+
+[[scarf-to-db-auth.conf]]
+==== **scarf-to-db-auth.conf**
+
+The purpose of scarf-to-db-auth.conf is to store database credential information if required by DBMS (New installation of MongoDB and SQLite does not require username or password). Since the information stored can compromise security if revealed, the file permission should be set accordingly so that only the owner can read the file. The database authentication related options configured in this file are as follows:
+
+[width="50%"]
+|=======================================================================
+|Option | Description 
+|`db-username=<username>`| Username for DBMS
+|`db-password=<password>`| Password for DBMS
+|=======================================================================
+
+[[command-line-options]]
+==== **Command line options**
+
+The command line options can be used to specify any of the previous configuration file options, plus options that would be unique to each run of scarf-to-db. Command line options start with `--` and have same name as in the configuration file. Values are specified as `--key=value` or `--key value`. Some of the frequently used options have single letter options which can also be used to specify values using `-single-letter-key value`. The `-single-letter-key` is mentioned with the option itself in the following table. The command line options are as follows:
+
+NOTE: You must specify exactly one of the following options: `--scarf`, `--create-tables` or `--delete-tables`.
+
+[cols="<32%,<68%",options="header",]
+|=======================================================================
+|Option | Description
+|`--scarf=<path>` or `-s <path>`| Path to the SCARF results XML or JSON
+(parsed_results.xml or parsed_results.json) file or parsed_results.conf
+file +
+(**Note:** When test is run on a package it produces two files
+named, parsed_results.conf and parsed_results.tar.gz.
+parsed_results.tar.gz file contains a file named, parsed_results.xml
+file. One can specify the path to parsed_results.conf file and
+scarf-to-db will automatically find the XML or JSON file or one can
+untar the parsed_results.tar.gz and provide the path to XML or JSON file
+using this option) *(REQUIRED)*
+|`--conf=<path>`| Path to Config file containing database parameters
+(default location: current directory, default filename:
+scarf-to-db.conf)
+|`--create-tables`| Creates tables for SQL databases and exits
+|`--delete-tables`| Deletes tables for SQL databases and exits
+|`--just-print` or `-n`| Prints out the commands used for database
+execution and exits
+|`--verbose or -V`| Inserts data into the database and prints out the
+insert statements depending on the value of `--output-file`
+|`--help` or `-h`| Prints out the help menu on the console and exits
+|`--version` or `-v`| Prints out the version of the program and exits
+|`--test-auth` | Verifies the credential information provided in
+`scarf-to-db-auth.conf` file for the given database type and database
+name
+|`--pkg-name=<name>`| Name of the package that was assessed (default:
+null)
+|`--pkg-version=<version>`| Version of the package that was assessed
+(default: null)
+|`--platform=<name>`| Name of the platform on which the assessment was run
+(default: null)
+|`--output-file=<name>`| Saves all the insert statement to the file
+provided using this option, default: console window
+|`--assess-id=<name>`| Unique id (for SQL databases) required when just
+printing out the the insert statements
+|=======================================================================
+
+[[database-table-creation-or-deletion-for-sql-databases]]
+=== **Database table creation or deletion for SQL databases**
+
+SQL databases require tables to be created before importing SCARF data. However, MongoDB does not require any tables for storing data. scarf-to-db can be used to create or delete SQL database tables using the following command line options:
+
+[width="60%",cols="<30%,<70%",options="header",]
+|=======================================================================
+|Option | Description
+|`--create-tables`| Creates tables for SQL databases and exits
+|`--delete-tables`| Deletes tables for SQL databases and exits
+|=======================================================================
+
+NOTE: The schema for the SCARF tables can be found in the section **<<database-schema, Database Schema>>**.
+
+[[saving-the-scarf-results-into-a-database]]
+=== **Saving the SCARF results into a database**
+
+To save the SCARF results into a database only the `--scarf` command line option is required, besides the database configuration. (Assuming you have the DBMS and appropriate perl drivers installed). You can also use `--verbose` or `--just-print` to view the output with or without executing the database statements.
+
+[[example-commands-loading-scarf-into-a-mongodb-database]]
+=== **Example commands loading SCARF into a MongoDB database**
+
+Configure the `scarf-to-db.conf` and `scarf-to-db-auth.conf` files as mentioned in the previous sections. After configuring those files you should have content similar to the following configuration files:
+
+scarf-to-db-auth.conf
+....
+db-username = user
+db-password = password
+....
+
+scarf-to-db.conf
+....
+db-type = mongodb
+db-host = my-mongo.swamp.cs.wisc.edu
+db-name = scarf
+auth-conf = scarf-to-db-auth.conf
+....
+
+[[execution-command]]
+==== **Execution command**
+
+[source,sh]
+----
+bin/scarf-to-db --scarf=./parsed_results.conf 
+----
+
+The above command saves SCARF data in the database and produces no output unless there are errors.
+
+[[if-you-use---verbose-or---just-print-with-any-database-data-will-be-displayed-as-shown-below]]
+If you use `--verbose` or `--just-print` with any database, data will be displayed as shown below:
+
+For SQL databases:
+
+* You will see similar insert statement only once per SCARF file
+
+[source,sh]
+----
+INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, toolversion, plat) VALUES  ('138ad1cb-129e-4837-a376-eed3b2ed072f', null, null, 'clang-sa', 'clang version 3.7.0, null);
+----
+
+* You will see insert statements similar to these per weakness
+
+[source,sh]
+----
+INSERT INTO methods VALUES  ('4', '1', '-1', null, null);
+INSERT INTO locations VALUES  ('4', '1', '1', '1', 'lighttpd-1.4.33/src/lemon.c', '857', '857', '9', null, null);
+INSERT INTO weaknesses VALUES  ('4', '1', 'Assigned value is garbage or undefined', 'Logic error', null, null, 'Assigned value is garbage or undefined', null, null, null, null, null, null, null); 
+INSERT INTO cwe VALUES  ('4', '1', null);
+----
+
+For MongoDB:
+
+* You will see an array of documents similar to the following document
+
+[source,sh]
+----
+{
+    "BugId" : 1,
+    "BugRank" : null,
+    "plat" : null,
+    "toolType" : "clang-sa",
+    "Methods" : [
+    ],
+    "classname" : null,
+    "toolVersion" : "clang version 3.7.0",
+    "BugSeverity" : null,
+    "Location" : [
+	{
+	    "LocationId" : 1,
+	    "EndLine" : 857,
+	    "StartLine" : 857,
+	    "primary" : true,
+	    "SourceFile" : "lighttpd-1.4.33/src/lemon.c",
+	    "StartColumn" : 9
+	}
+    ],
+    "BugMessage" : "Assigned value is garbage or undefined",
+    "BugCode" : "Assigned value is garbage or undefined",
+    "pkgShortName" : null,
+    "pkgVersion" : null,
+    "assessUuid" : "138ad1cb-129e-4837-a376-eed3b2ed072f",
+    "BugGroup" : "Logic error",
+    "BugResolutionMsg" : null,
+    "BugCwe" : null,
+    "InstanceLocation" : null,
+    "AssessmentReportFile" : null,
+    "BuildId" : null
+}
+----
+
+NOTE: The above output can used to manually import data to any of the supported databases.
+
+[[database-schema]]
+=== **Database Schema**
+
+[[mongodb]]
+*MongoDB*
+
+* *BugInstance*
+
+[source,sh]
+----
+{
+    "_id" : <unique MongoDB generated id>,
+    "BugRank" : <String>,
+    "plat" : <String>,
+    "toolType" : <String>,
+    "Methods" : [
+	{
+	    "MethodId" : <int>,
+	    "name" : <String>,
+	    "primary" : <Boolean>
+	}
+    ],
+    "classname" : <String>,
+    "toolVersion" : <String>,
+    "BugSeverity" : <String>,
+    "Location" : [
+	{
+	    "EndLine" : <int>,
+	    "StartLine" : <int>,
+	    "primary" : <Boolean>,
+	    "LocationId" : <int>,
+	    "SourceFile" : <path-String>,
+	    "StartColumn" : <int>,
+	    "EndColumn" : <int>,
+	    "Explanation" : <String>
+	}
+    ],
+
+    "BugMessage" : <String>,
+    "BugCode" : <String>,
+    "pkgShortName" : <String>,
+    "BugId" : <int>,
+    "pkgVersion" : <String>,
+    "assessUuid" : <uuid-String>,
+    "BugGroup" : <String>,
+    "BugResolutionMsg" : <String>,
+    "BugCwe" : [<int>],
+    "InstanceLocation" : {
+	"Xpath" : <path-String>,
+	"LineNum" : { 
+	    "Start" : <int>,
+	    "End" : <int>
+	}
+    },
+    "AssessmentReportFile" : <path-String>,
+    "BuildId" : <int>
+}
+----
+
+* *Metric*
+
+[source,sh]
+----	
+{  
+    "_id" : <unique MongoDB generated id>,	
+    "SourceFile" : <path-String>, 
+    "Type" : <String>,  
+    "pkgVersion" : <String>,  
+    "assessUuid" : <uuid-String>,  
+    "toolType" : <String>,  
+    "toolVersion" : <String>,  
+    "Value" : <String>,   
+    "plat" : <String>,  
+    "pkgShortName" : <String>,  
+    "MetricId" : <int>,  
+    "Method" : <String>,  
+    "Class" : <String>  
+}  
+----
+
+* *If the package does not contain any BugInstance or Metric*
+
+
+[source,sh]
+----
+{  
+    "_id" : <unique MongoDB generated id>, 
+    "pkgVersion" : <String>,  
+    "assessUuid" : <uuid-String>,  
+    "toolType" : <String>,  
+    "toolVersion" : <String>,  
+    "plat" : <String>,  
+    "pkgShortName" : <String>
+}
+----
+
+[[schema-sql-databases]]
+*Schema (SQL databases)*
+
+Below is the schema for SQLite database. All other SQL databases have same schema with few minor changes for primary key. But, the column names and types is same for all SQL databases.
+
+[source,sh]
+----
+
+CREATE TABLE assess (
+    assessId         integer PRIMARY KEY AUTOINCREMENT,
+    assessUuid       text       NOT NULL,
+    pkgShortName     text,
+    pkgVersion       text,
+    toolType         text       NOT NULL,
+    toolVersion      text,
+    plat             text
+);
+
+CREATE TABLE locations (
+    assessId         integer    NOT NULL,
+    bugId            integer    NOT NULL,
+    locId            integer    NOT NULL,
+    isPrimary        boolean    NOT NULL,
+    sourceFile       text       NOT NULL,
+    startLine        integer,
+    endLine          integer,
+    startCol         integer,
+    endCol           integer,
+    explanation      text,
+    PRIMARY KEY (assessId, bugId, locId)    
+);
+
+CREATE TABLE functions ( 
+    assessId         integer    NOT NULL,
+    sourceFile       text,
+    class            text,
+    method           text,
+    startLine        integer,
+    endLine          integer
+);
+
+CREATE TABLE weaknesses (
+    assessId         integer    NOT NULL,
+    bugId            integer    NOT NULL,
+    bugCode          text,
+    bugGroup         text,
+    bugRank          text,
+    bugSeverity      text,
+    bugMessage       text,
+    bugResolutionMsg text,
+    classname        text,
+    AssessReportFile text,
+    BuildId          integer,
+    ILXpath          text,
+    ILStart          integer,
+    ILEnd            integer,
+    PRIMARY KEY (assessId, bugId)   
+);
+
+CREATE TABLE cwe (
+    assessId         integer	NOT NULL,
+    bugId            integer    NOT NULL,
+    cwe              integer
+);
+
+CREATE TABLE methods (
+    assessId         integer    NOT NULL,
+    bugId            integer    NOT NULL,
+    methodId         integer,
+    isPrimary        boolean,
+    methodName       text,
+    PRIMARY KEY (assessId, bugId, methodId) 
+);
+
+CREATE TABLE metrics (
+    assessId         integer    NOT NULL,
+    metricId         integer    NOT NULL,
+    sourceFile       text,
+    class            text,
+    method           text,
+    type             text,
+    strVal           text,
+    numVal           real,
+    PRIMARY KEY (assessId, metricId)    
+);
+----
+
+[[appendix-a]]
+=== **Appendix A: Database Installation**
+
+[[installing-mongodb]]
+==== **Installing MongoDB**
+
+To install MongoDB follow the installation guide at https://docs.mongodb.com/manual/installation/
+
+[[installing-mongodb-on-rhel-based-platforms]]
+Installing MongoDB on RHEL based platforms
+
+For installation specific to RHEL based platforms please see https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/
+
+NOTE: On `rhel-6.4-64` platform, executing `sudo yum install -y mongodb` will install an old version (2.4.14) of MongoDB. To install the latest version (3.2.8 or above) of MongoDB, please follow the steps in the section **Configure the package management system (yum)** in the tutorial https://docs.mongodb.com/manual/tutorial/install-mongodb-on-red-hat/. This program is tested on MongoDB version (2.4.14, 3.0.12, and 3.2.8) with perl MongoDB driver version (1.4.2, and 1.4.4).
+
+Example: To install `3.2.x` version of MongoDB on `rhel-6.4-64`:
+
+Create a file named `/etc/yum.repos.d/mongodb-org-3.2.repo` and add the following content to the file
+
+[source,conf]
+----
+[mongodb-org-3.2]
+name=MongoDB Repository
+baseurl=https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/3.2/x86_64/
+gpgcheck=1
+enabled=1
+gpgkey=https://www.mongodb.org/static/pgp/server-3.2.asc
+----
+
+Execute the following shell command to install MongoDB:
+
+[source,sh]
+----
+% sudo yum install -y mongodb-org
+----
+
+[[check-if-the-mongodb-server-is-running]]
+Check if the MongoDB server is running
+
+If the installation is successful, please execute the following command to check if the MongoDB server is running.
+
+[source,sh]
+----
+# Invokes Mongo Shell
+% mongo
+----
+
+If the above command fails with a message *exception: connect failed* then, MongoDB may not be running.
+
+Execute the following command to run MongoDB:
+
+[source,sh]
+----
+% sudo /etc/init.d/mongod start
+----
+
+By default, MongoDB server listens on the network interface `localhost:27017`. There are various options to access MongoDB across the network. See the MongoDB documentation for more information https://docs.mongodb.com/manual/reference/configuration-options/.
+
+[[authentication]]
+Authentication
+
+By default, MongoDB allows any user that can connect to MongoDB to create databases and insert documents. To require authenticated users see https://docs.mongodb.com/manual/tutorial/enable-authentication/.
+
+Note: If you notice any authentication related error messages and you are sure that password and username entered are correct, please check if the `authenticationDatabase` used for the user is same as the database that you are trying to access
+
+[[installing-postgresql]]
+==== **Installing PostgreSQL**
+
+To install PostgreSQL follow the installation guide at https://www.postgresql.org/download/linux/redhat/
+
+[[installing-mysql]]
+==== **Installing MySQL**
+
+To install MySQL follow the installation guide at https://dev.mysql.com/doc/mysql-repo-excerpt/5.6/en/linux-installation-yum-repo.html
+
+[[installing-mariadb]]
+==== **Installing MariaDB**
+
+To install MariaDB follow the installation guide at https://mariadb.com/kb/en/mariadb/yum/
+
+[[appendix-b]]
+=== **Appendix B: Perl Drivers Installation**
+
+[[installing-perl-drivers]]
+==== **Installing Perl drivers**
+
+
+scarf-to-db program uses Perl drivers. Install the following Perl drivers on the machine that you would want to call scarf-to-db from
+
+1.  DBI
+2.  DBD::Pg
+3.  DBD::MySQL
+4.  DBD::SQLite
+5.  MongoDB
+6.  YAML
+7.  Config::AutoConf
+8.  JSON::MaybeXS
+
+On `rhel-6.4-64` platform, execute the following commands to install the drivers using CPAN
+
+[source,sh]
+----
+sudo cpan DBI DBD::Pg MongoDB DBD::MySQL DBD::SQLite
+----
+
+NOTE: On some RHEL machines, you may also need to install the `YAML and Config::AutoConf` packages from CPAN. To install the `YAML and Config::AutoConf` package, execute the following shell command:
+
+
+[source,sh]
+----
+% sudo cpan YAML Config::AutoConf
+----
+
+NOTE: The above command may ask for user confirmation to install packages and its dependencies too many times. To avoid typing `yes` on the CPAN console too many time, use the following commands:
+
+
+[source,sh]
+----
+% sudo perl -MCPAN -e shell  # Opens up a CPAN shell
+    cpan[1]> o conf prerequisites_policy follow
+    cpan[2]> o conf build_requires_install_policy yes
+    cpan[3]> o conf commit
+----
+
+For more information on how to avoid the `yes` confirmation dialog please see https://major.io/2009/01/01/cpan-automatically-install-dependencies-without-confirmation/.
+
+NOTE: Using the CPAN command to install perl MongoDB driver you can install latest version of the driver. This program is tested on versions (1.4.2, and 1.4.4(latest)).

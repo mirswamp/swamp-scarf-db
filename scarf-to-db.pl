@@ -58,7 +58,7 @@ sub main
 	exit 0;
     }
 
-    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions");
+    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions", "cwe");
     
     # Processing the table options depending on the command line arguments
     if (($database eq 'postgres' || $database eq 'mariadb' || $database eq 'mysql'
@@ -497,23 +497,20 @@ sub justPrint
 sub SQLStatements
 {
     my ($operation, $db_type) = @_; 
-    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions");
+    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions", "cwe");
     my %insertStatements = (
         assess      	=> "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, " .
 			    "toolversion, plat) VALUES (?, ?, ?, ?, ?, ?);",
 	assess1     	=> "INSERT INTO assess VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
 	weaknesses 	=> "INSERT INTO weaknesses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " .
-			    "?, ?, ?, ?, ?);",
+			    "?, ?, ?, ?);",
+	cwe   		=> "INSERT INTO cwe VALUES (?, ?, ?);",
 	locations   	=> "INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
 	methods     	=> "INSERT INTO methods VALUES (?, ?, ?, ?, ?);",
 	metrics     	=> "INSERT INTO metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
 	functions   	=> "INSERT INTO functions VALUES (?, ?, ?, ?, ?, ?);",	
     );
-=pod
-assess      	=> "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, " .
-			    "toolversion, plat, assessreportfile, buildid, instanceloction) " .
-			    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);",
-=cut
+    
     my $primaryKey = "BIGSERIAL PRIMARY KEY";
 
     if ($db_type eq 'mariadb' || $db_type eq 'mysql')  {
@@ -550,7 +547,6 @@ assess      	=> "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, toolt
 			    bugMessage		text,
 			    bugResolutionMsg	text,
 			    classname		text,
-			    bugCwe		text,
 			    AssessReportFile	text,
 			    BuildId		integer,
 			    ILXpath		text,
@@ -572,7 +568,13 @@ assess      	=> "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, toolt
 			    explanation		text,
 			    PRIMARY KEY (assessId, bugId, locId)	
 			    );),
-	
+
+	    cwe         => qq(CREATE TABLE cwe (
+                             assessId           integer                 NOT NULL,
+			     bugId              integer                 NOT NULL,
+			     cwe                integer
+			    );),
+
 	    methods	=> qq(CREATE TABLE methods (
 			    assessId		integer			NOT NULL,
 			    bugId		integer			NOT NULL,
@@ -1016,13 +1018,34 @@ sub bug
 	}
     }
 
-    if (exists $bug->{CweIds})  {	
+    # Saving into weakness table
+    if (defined($data->{verbose}) || defined($data->{insert})) {
+	my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
+		    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
+		    $res_sug, $classname, $assessReportFile, $buildid,
+		    $xpath, $startLine, $endLine);
+
+	if ($check < 0)  {
+	    die "Unable to insert\n";
+	}
+    }
+
+    if (defined($data->{verbose}) || defined($data->{justprint})) {
+	my @values = ($data->{assessId}, $bug->{BugId}, $bug_code, $bug_group, 
+			$bug_rank, $bug_sev, $bug->{BugMessage}, $res_sug, 
+			$classname, $assessReportFile, $buildid,
+			$xpath, $startLine, $endLine);
+
+	justPrint('SQL', 'print', $data->{name}, 'weaknesses', $data->{output}, 
+		    \$data->{count}, \@values);
+    }
+
+
+    # saving into cwe table
+    if (exists $bug->{CweIds})  {
 	foreach my $cweid ( $bug->{CweIds} )  {  
 	    if (defined($data->{verbose}) || defined($data->{insert})) {
-		my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
-			    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
-			    $res_sug, $classname, $cweid, $assessReportFile, $buildid,
-			    $xpath, $startLine, $endLine);
+		my $check = $data->{cwe}->execute($data->{assessId}, $bug->{BugId}, $cweid);
 
 		if ($check < 0)  {
 		    die "Unable to insert\n";
@@ -1030,39 +1053,30 @@ sub bug
 	    }
 
 	    if (defined($data->{verbose}) || defined($data->{justprint})) {
-		my @values = ($data->{assessId}, $bug->{BugId}, $bug_code, $bug_group, 
-				$bug_rank, $bug_sev, $bug->{BugMessage}, $res_sug, 
-				$classname, $cweid, $assessReportFile, $buildid,
-				$xpath, $startLine, $endLine);
+		my @values = ($data->{assessId}, $bug->{BugId}, $cweid);
 
-		justPrint('SQL', 'print', $data->{name}, 'weaknesses', $data->{output}, 
+		justPrint('SQL', 'print', $data->{name}, 'cwe', $data->{output}, 
 			    \$data->{count}, \@values);
 	    }
 	}
     } else  {
-	    my $cweid = undef;
-	    if (defined($data->{verbose}) || defined($data->{insert})) {
-		my $check = $data->{weaknesses}->execute($data->{assessId}, $bug->{BugId},
-			    $bug_code, $bug_group, $bug_rank, $bug_sev, $bug->{BugMessage},
-			    $res_sug, $classname, $cweid, $assessReportFile, $buildid,
-			    $xpath, $startLine, $endLine);
-	    
-		if ($check < 0)  {
-		    die "Unable to insert\n";
-		}
+	my $cweid = undef;
+	if (defined($data->{verbose}) || defined($data->{insert})) {
+	    my $check = $data->{cwe}->execute($data->{assessId}, $bug->{BugId}, $cweid);
+
+	    if ($check < 0)  {
+		die "Unable to insert\n";
 	    }
+	}
 
-	    if (defined($data->{verbose}) || defined($data->{justprint})) {
-		my @values = ($data->{assessId}, $bug->{BugId}, $bug_code, $bug_group, 
-				$bug_rank, $bug_sev, $bug->{BugMessage}, $res_sug, 
-				$classname, $cweid, $assessReportFile, $buildid,
-				$xpath, $startLine, $endLine);
+	if (defined($data->{verbose}) || defined($data->{justprint})) {
+	    my @values = ($data->{assessId}, $bug->{BugId}, $cweid);
 
-		justPrint('SQL', 'print', $data->{name}, 'weaknesses', $data->{output}, 
+	    justPrint('SQL', 'print', $data->{name}, 'cwe', $data->{output}, 
 			    \$data->{count}, \@values);
-	    }
+	}
     }
-    
+
     if (defined($data->{verbose}) || defined($data->{insert})) {
 	$data->{db_count}++;
 	if ($data->{db_commits} != 'INF' && $data->{db_commits} == $data->{db_count})  {
