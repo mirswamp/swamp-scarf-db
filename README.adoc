@@ -139,7 +139,7 @@ NOTE: The schema for the SCARF tables can be found in the section **<<database-s
 [[saving-the-scarf-results-into-a-database]]
 === **Saving the SCARF results into a database**
 
-To save the SCARF results into a database only the `--scarf` command line option is required, besides the database configuration. (Assuming you have the DBMS and appropriate perl drivers installed). You can also use `--verbose` or `--just-print` to view the output with or without executing the database statements.
+To save the SCARF results into a database only the `--scarf` command line option is required, besides the database configuration (Assuming you have the DBMS and appropriate perl drivers installed). You can also use `--verbose` or `--just-print` to view the output with or without executing the database statements.
 
 [[example-commands-loading-scarf-into-a-mongodb-database]]
 === **Example commands loading SCARF into a MongoDB database**
@@ -172,25 +172,6 @@ The above command saves SCARF data in the database and produces no output unless
 
 [[if-you-use---verbose-or---just-print-with-any-database-data-will-be-displayed-as-shown-below]]
 If you use `--verbose` or `--just-print` with any database, data will be displayed as shown below:
-
-For SQL databases:
-
-* You will see similar insert statement only once per SCARF file
-
-[source,sh]
-----
-INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, toolversion, plat) VALUES  ('138ad1cb-129e-4837-a376-eed3b2ed072f', null, null, 'clang-sa', 'clang version 3.7.0, null);
-----
-
-* You will see insert statements similar to these per weakness
-
-[source,sh]
-----
-INSERT INTO methods VALUES  ('4', '1', '-1', null, null);
-INSERT INTO locations VALUES  ('4', '1', '1', '1', 'lighttpd-1.4.33/src/lemon.c', '857', '857', '9', null, null);
-INSERT INTO weaknesses VALUES  ('4', '1', 'Assigned value is garbage or undefined', 'Logic error', null, null, 'Assigned value is garbage or undefined', null, null, null, null, null, null, null); 
-INSERT INTO cwe VALUES  ('4', '1', null);
-----
 
 For MongoDB:
 
@@ -225,11 +206,31 @@ For MongoDB:
     "assessUuid" : "138ad1cb-129e-4837-a376-eed3b2ed072f",
     "BugGroup" : "Logic error",
     "BugResolutionMsg" : null,
-    "BugCwe" : null,
+    "BugCwe" : [
+    ],
     "InstanceLocation" : null,
     "AssessmentReportFile" : null,
     "BuildId" : null
 }
+----
+
+For SQL databases:
+
+* You will see similar insert statement only once per SCARF file
+
+[source,sh]
+----
+INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, toolversion, plat) VALUES  ('138ad1cb-129e-4837-a376-eed3b2ed072f', null, null, 'clang-sa', 'clang version 3.7.0, null);
+----
+
+* You will see insert statements similar to these per weakness
+
+[source,sh]
+----
+INSERT INTO methods VALUES  ('4', '1', '-1', null, null);
+INSERT INTO locations VALUES  ('4', '1', '1', '1', 'lighttpd-1.4.33/src/lemon.c', '857', '857', '9', null, null);
+INSERT INTO weaknesses VALUES  ('4', '1', 'Assigned value is garbage or undefined', 'Logic error', null, null, 'Assigned value is garbage or undefined', null, null, null, null, null, null, null); 
+INSERT INTO cwes VALUES  ('4', '1', null);
 ----
 
 NOTE: The above output can used to manually import data to any of the supported databases.
@@ -237,8 +238,10 @@ NOTE: The above output can used to manually import data to any of the supported 
 [[database-schema]]
 === **Database Schema**
 
+This section will describe the schema of documents and tables for NoSQL and SQL databases respectively.
+
 [[mongodb]]
-*MongoDB*
+==== **MongoDB**
 
 * *BugInstance*
 
@@ -331,7 +334,7 @@ NOTE: The above output can used to manually import data to any of the supported 
 ----
 
 [[schema-sql-databases]]
-*Schema (SQL databases)*
+==== **Schema (SQL databases)**
 
 Below is the schema for SQLite database. All other SQL databases have same schema with few minor changes for primary key. But, the column names and types is same for all SQL databases.
 
@@ -389,7 +392,7 @@ CREATE TABLE weaknesses (
     PRIMARY KEY (assessId, bugId)   
 );
 
-CREATE TABLE cwe (
+CREATE TABLE cwes (
     assessId         integer	NOT NULL,
     bugId            integer    NOT NULL,
     cwe              integer
@@ -416,6 +419,8 @@ CREATE TABLE metrics (
     PRIMARY KEY (assessId, metricId)    
 );
 ----
+
+:numbered!:
 
 [[appendix-a]]
 === **Appendix A: Database Installation**

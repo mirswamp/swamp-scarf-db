@@ -58,7 +58,7 @@ sub main
 	exit 0;
     }
 
-    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions", "cwe");
+    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions", "cwes");
     
     # Processing the table options depending on the command line arguments
     if (($database eq 'postgres' || $database eq 'mariadb' || $database eq 'mysql'
@@ -497,14 +497,14 @@ sub justPrint
 sub SQLStatements
 {
     my ($operation, $db_type) = @_; 
-    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions", "cwe");
+    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions", "cwes");
     my %insertStatements = (
         assess      	=> "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, " .
 			    "toolversion, plat) VALUES (?, ?, ?, ?, ?, ?);",
 	assess1     	=> "INSERT INTO assess VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
 	weaknesses 	=> "INSERT INTO weaknesses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " .
 			    "?, ?, ?, ?);",
-	cwe   		=> "INSERT INTO cwe VALUES (?, ?, ?);",
+	cwes   		=> "INSERT INTO cwe VALUES (?, ?, ?);",
 	locations   	=> "INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
 	methods     	=> "INSERT INTO methods VALUES (?, ?, ?, ?, ?);",
 	metrics     	=> "INSERT INTO metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
@@ -555,7 +555,7 @@ sub SQLStatements
 			    PRIMARY KEY (assessId, bugId)	
 			    );),
 
-	    locations	=> qq(CREATE TABLE locations (
+        locations	=> qq(CREATE TABLE locations (
 			    assessId		integer			NOT NULL,
 			    bugId		integer			NOT NULL,
 			    locId		integer			NOT NULL,
@@ -569,13 +569,13 @@ sub SQLStatements
 			    PRIMARY KEY (assessId, bugId, locId)	
 			    );),
 
-	    cwe         => qq(CREATE TABLE cwe (
+        cwes	         => qq(CREATE TABLE cwe (
                              assessId           integer                 NOT NULL,
 			     bugId              integer                 NOT NULL,
 			     cwe                integer
 			    );),
 
-	    methods	=> qq(CREATE TABLE methods (
+	methods		=> qq(CREATE TABLE methods (
 			    assessId		integer			NOT NULL,
 			    bugId		integer			NOT NULL,
 			    methodId		integer,
@@ -584,7 +584,7 @@ sub SQLStatements
 			    PRIMARY KEY (assessId, bugId, methodId)	
 			    );),
 
-	    metrics	=> qq(CREATE TABLE metrics (
+	metrics		=> qq(CREATE TABLE metrics (
 			    assessId		integer			NOT NULL,
 			    metricId		integer			NOT NULL,
 			    sourceFile		text,
@@ -596,7 +596,7 @@ sub SQLStatements
 			    PRIMARY KEY (assessId, metricId)	
 			    );),
 
-	    functions	=> qq(CREATE TABLE functions ( 
+	functions	=> qq(CREATE TABLE functions ( 
 			    assessId		integer			NOT NULL,
 			    sourceFile		text,
 			    class		text,
