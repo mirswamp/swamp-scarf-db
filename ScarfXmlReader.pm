@@ -15,7 +15,7 @@
 #  limitations under the License.
 #  
 
-package ScarfToHash;
+package ScarfXmlReader;
 use strict;
 use XML::Parser;
 use Scalar::Util qw[openhandle];
@@ -23,49 +23,156 @@ use IO qw[Handle Seekable File Pipe];
 ##########Initialize Reader##########
 sub new
 {
-    my ($class, $source, $callbacks) = @_;
+    my ($class, $source) = @_;
     my $hashref = {};
     my $self->{hashref} = $hashref;
     $self->{lastElt} = "";
     $self->{source} = $source;
-    die "no callbacks detected" if !(defined $callbacks);
-    $self->{callbacks} = $callbacks; 
+    $self->{callbacks} = {};
     $self->{parser} = new XML::Parser ();
     $self->{validStart} = 0;
     $self->{validBody} = 0;
+    $self->{encoding} = "UTF-8";
+    $self->{return} = undef;
 
     bless $self, $class;
 
 }
 
+#################Callback accessors/mutators###################
+sub SetEncoding 
+{
+my ($self, $enc) = @_;
+$self->{encoding} = $enc;
+}
+sub GetEncoding
+{
+my ($self) = @_;
+return $self->{encoding};
+}
+
+
+sub SetInitialCallback
+{
+    my ($self, $callback) = @_;
+    $self->{callbacks}->{InitialCallback} = $callback;
+}
+
+sub SetBugCallback
+{
+    my ($self, $callback) = @_;
+    $self->{callbacks}->{BugCallback} = $callback;
+}
+
+sub SetMetricCallback
+{
+    my ($self, $callback) = @_;
+    $self->{callbacks}->{MetricCallback} = $callback;
+}
+
+sub SetBugSummaryCallback
+{
+    my ($self, $callback) = @_;
+    $self->{callbacks}->{BugSummaryCallback} = $callback;
+}
+
+sub SetMetricSummaryCallback
+{
+    my ($self, $callback) = @_;
+    $self->{callbacks}->{MetricSummaryCallback} = $callback;
+}
+
+sub SetFinalCallback
+{
+    my ($self, $callback) = @_;
+    $self->{callbacks}->{FinalCallback} = $callback;
+}
+
+sub SetCallbackData
+{
+    my ($self, $callbackData) = @_;
+    $self->{callbacks}->{CallbackData} = $callbackData;
+}
+
+
+sub GetInitialCallback
+{
+    my ($self) = @_;
+    return $self->{callbacks}->{InitialCallback};
+}
+
+sub GetBugCallback
+{
+    my ($self) = @_;
+    return $self->{callbacks}->{BugCallback};
+}
+
+sub GetMetricCallback
+{
+    my ($self) = @_;
+    return $self->{callbacks}->{MetricCallback};
+}
+
+sub GetBugSummaryCallback
+{
+    my ($self) = @_;
+    return $self->{callbacks}->{BugSummaryCallback};
+}
+
+sub GetMetricSummaryCallback
+{
+    my ($self) = @_;
+    return $self->{callbacks}->{MetricSummaryCallback};
+}
+
+sub GetFinalCallback
+{
+    my ($self) = @_;
+    return $self->{callbacks}->{FinalCallback};
+}
+
+sub GetCallbackData
+{
+    my ($self) = @_;
+    return $self->{callbacks}->{CallbackData};
+}
+
 
 ##########Initiate parsing of file##########
-sub parse
+sub Parse
 {
     my ( $self ) = @_;
     my $hash = {};
+    $self->{return} = undef;
     my $lastElt = "";
     $self->{parser}->setHandlers(
 				    "Start", sub { $hash = startHandler( \$hash, \$lastElt, 
 					    $self->{callbacks}->{InitialCallback}, \$self->{validStart}, 
-					    \$self->{validBody}, $self->{callbacks}->{CallbackData},  @_ ) },
+					    \$self->{validBody}, $self->{callbacks}->{CallbackData}, \$self->{return},  @_ ) },
 				    "End", sub { $hash = endHandler( \$hash, \$lastElt, 
 					    $self->{callbacks}->{BugCallback},  $self->{callbacks}->{MetricCallback},
 					    $self->{callbacks}->{BugSummaryCallback}, $self->{callbacks}->{MetricSummaryCallback},
-					    \$self->{validBody}, $self->{callbacks}->{FinishCallback}, $self->{callbacks}->{CallbackData}, @_ ) },
+					    \$self->{validBody}, $self->{callbacks}->{FinalCallback}, $self->{callbacks}->{CallbackData}, \$self->{return}, @_ ) },
 				    "Char", sub { $hash = charHandler( \$hash, \$lastElt, @_ ) },
 				    "Default" ,\&defaultHandler
 				);
     #possibly use xsdValidator to verify scarf
     #$self->{parser}->parsefile($self->{source});
-    if (openhandle($self->{source}) or ref $self->{source} eq "IO"){ 
-	$self->{parser}->parse($self->{source});
-    } elsif ( ref $self->{source} eq "SCALAR" ) {
-	my $file;
-	open($file, "<", ${$self->{source}}) or die "Can't open source with filename ${$self->{source}}";
-	$self->{parser}->parse($file);
+    if (openhandle($self->{source}) or ref $self->{source} eq "IO" or ref $self->{source} eq "SCALAR"){ 
+	$self->{parser}->parse($self->{source}, ProtocolEncoding => $self->{encoding});
     } else {
-	$self->{parser}->parse($self->{source});
+	my $file;
+	open($file, "<", $self->{source}) or die "Can't open source with filename ${$self->{source}}\n";
+	$self->{parser}->parse($file, ProtocolEncoding => $self->{encoding});
+    }
+    if ( $lastElt eq "FINISHED" ) {
+	return $self->{return};
+    } else {
+	if (exists $self->{callbacks}->{FinalCallback}){
+	    return $self->{callbacks}->{FinalCallback}->($self->{return}, $self->{callbacks}->{CallbackData});
+	} else {
+	    return $self->{return};
+	}
     }
 }
 
@@ -73,22 +180,27 @@ sub parse
 ##########Handler for start tags##########
 sub startHandler
 {
-    my ( $hash, $lastElt, $initialcallback, $validStart, $validBody, $data, $parser, $elt, %atts ) = @_;
+    my ( $hash, $lastElt, $initialcallback, $validStart, $validBody, $data, $ret, $parser, $elt, %atts ) = @_;
     if ( $elt eq "AnalyzerReport" ) {
 	if (defined $initialcallback){
 	    if ( $$validStart ) {
-		print ("Invalid SCARF File: Multiple Start Tags");
+		print ("Invalid SCARF File: Multiple Start Tags\n");
 	    } else {
 		$$validStart = 1;
 	    }
 	    $$hash = { tool_name => $atts{tool_name}, tool_version => $atts{tool_version}, uuid => $atts{uuid} };
-	    $initialcallback->( $$hash, $data ) and $parser->finish;
+	    $$ret = $initialcallback->( $$hash, $data );
+	    if ( defined $$ret ) {
+		$parser->finish;
+	    }
 	    $$hash = {};
+	} else { 
+	    $$validStart = 1;
 	}
 
     } else {
 	if ( $$validStart == 0 ) {
-	    print ("Invalid SCARF File: No Analyzer Report Start Tag");
+	    print ("Invalid SCARF File: No Analyzer Report Start Tag\n");
 	}
         if ( $elt eq "BugInstance" ) {
             $$hash->{BugId} = $atts{id};
@@ -145,7 +257,7 @@ sub startHandler
 sub endHandler
 {
     my ( $hash, $lastElt, $bugcallback, $metriccallback, $bugsumcallback, $metricsumcallback, $validBody, 
-	    $finishcallback, $data, $parser, $elt ) = @_;    
+	    $finishcallback, $data, $ret, $parser, $elt ) = @_;    
     for my $cmpElt ( qw/AssessmentReportFile BugCode BugRank ClassName BugSeverity BugGroup BugMessage ResolutionSuggestion Class/ ) {
 	if ( $elt eq $cmpElt ) {
 	    $$hash->{$elt} =~ s/(^\s+)|(\s+$)//g;
@@ -158,7 +270,10 @@ sub endHandler
     }
 
     if ( $elt eq "BugInstance" && defined $bugcallback ) {
-	$bugcallback->( $$hash, $data ) and $parser->finish;
+	$$ret = $bugcallback->( $$hash, $data );
+	if (defined $$ret){
+	    $parser->finish;
+	}
 	$$hash = {};
     } elsif ( $elt eq "Metric" && defined $metriccallback ) {
 	if( ! defined $$hash->{SourceFile} ) {
@@ -170,26 +285,41 @@ sub endHandler
 	if( ! defined $$hash->{Method} ) {
 	    delete $$hash->{Method};
 	}
-	$metriccallback->( $$hash, $data ) and $parser->finish;
+	$$ret = $metriccallback->( $$hash, $data );
+	if (defined $$ret) {
+	    $parser->finish;
+	}
         $$hash = {};
 
     } elsif ( $elt eq "BugSummary" && defined $bugsumcallback ) {
-	$bugsumcallback->( $$hash, $data ) and $parser->finish; 
+	$$ret = $bugsumcallback->( $$hash, $data );
+	if (defined $$ret){
+	    $parser->finish; 
+	}
 	$$hash = {};
 
     } elsif ( $elt eq "MetricSummaries" && defined $metricsumcallback ) {
-	$metricsumcallback->( $$hash, $data ) and $parser->finish;
+	$$ret = $metricsumcallback->( $$hash, $data );
+	if (defined $$ret) {
+	    $parser->finish;
+	}
         $$hash = {};
 
     } elsif ( $elt eq "AnalyzerReport") {
 	if ( ! $$validBody ) {
-	    printf "No BugInstances or Metrics found in file.";
+	    printf "No BugInstances or Metrics found in file.\n";
 	}
 	if ( defined $finishcallback ) {
-	    $finishcallback->($data);
+	    $$ret = $finishcallback->($$ret, $data);
+	    if (defined $$ret) {
+		$$lastElt = "FINISHED";
+		$parser->finish;
+		return $$hash;
+	    }
 	}
-    } 
-
+    } elsif ( $elt eq "Metric" or $elt eq "BugInstance" or $elt eq "BugSummary" or $elt eq "MetricSummaries" ) {
+	$$hash = {};
+    }
     $$lastElt = "";
     return $$hash;
 }
@@ -244,11 +374,11 @@ sub charHandler
         return $$hash;
     }
 
-    if ( $elt eq "CweID" ) {
+    if ( $elt eq "CweId" ) {
 	if ( exists $$hash->{CweIds} ) {
 	    push @{$$hash->{CweIds}}, $chars;
 	} else {
-	    $$hash->{CweIds} = ($chars);
+	    @{$$hash->{CweIds}} = ($chars);
 	}
 	return $$hash;
     }

@@ -21,8 +21,8 @@ use 5.010;
 use Getopt::Long;
 use FindBin;
 use lib $FindBin::Bin;
-use ScarfToHash;
-use JSONToHash;
+use ScarfXmlReader;
+use ScarfJSONReader;
 # required for SQL databases
 use DBI;
 # required for MongoDB
@@ -58,7 +58,7 @@ sub main
 	exit 0;
     }
 
-    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions", "cwes");
+    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions", "cwe");
     
     # Processing the table options depending on the command line arguments
     if (($database eq 'postgres' || $database eq 'mariadb' || $database eq 'mysql'
@@ -497,14 +497,14 @@ sub justPrint
 sub SQLStatements
 {
     my ($operation, $db_type) = @_; 
-    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions", "cwes");
+    my @tableNames = ("assess", "weaknesses", "locations", "methods", "metrics", "functions", "cwe");
     my %insertStatements = (
         assess      	=> "INSERT INTO assess (assessuuid, pkgshortname, pkgversion, tooltype, " .
 			    "toolversion, plat) VALUES (?, ?, ?, ?, ?, ?);",
 	assess1     	=> "INSERT INTO assess VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
 	weaknesses 	=> "INSERT INTO weaknesses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " .
 			    "?, ?, ?, ?);",
-	cwes   		=> "INSERT INTO cwe VALUES (?, ?, ?);",
+	cwe   		=> "INSERT INTO cwe VALUES (?, ?, ?);",
 	locations   	=> "INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
 	methods     	=> "INSERT INTO methods VALUES (?, ?, ?, ?, ?);",
 	metrics     	=> "INSERT INTO metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
@@ -555,7 +555,7 @@ sub SQLStatements
 			    PRIMARY KEY (assessId, bugId)	
 			    );),
 
-        locations	=> qq(CREATE TABLE locations (
+	    locations	=> qq(CREATE TABLE locations (
 			    assessId		integer			NOT NULL,
 			    bugId		integer			NOT NULL,
 			    locId		integer			NOT NULL,
@@ -569,13 +569,13 @@ sub SQLStatements
 			    PRIMARY KEY (assessId, bugId, locId)	
 			    );),
 
-        cwes	         => qq(CREATE TABLE cwe (
+	    cwe         => qq(CREATE TABLE cwe (
                              assessId           integer                 NOT NULL,
 			     bugId              integer                 NOT NULL,
 			     cwe                integer
 			    );),
 
-	methods		=> qq(CREATE TABLE methods (
+	    methods	=> qq(CREATE TABLE methods (
 			    assessId		integer			NOT NULL,
 			    bugId		integer			NOT NULL,
 			    methodId		integer,
@@ -584,7 +584,7 @@ sub SQLStatements
 			    PRIMARY KEY (assessId, bugId, methodId)	
 			    );),
 
-	metrics		=> qq(CREATE TABLE metrics (
+	    metrics	=> qq(CREATE TABLE metrics (
 			    assessId		integer			NOT NULL,
 			    metricId		integer			NOT NULL,
 			    sourceFile		text,
@@ -596,7 +596,7 @@ sub SQLStatements
 			    PRIMARY KEY (assessId, metricId)	
 			    );),
 
-	functions	=> qq(CREATE TABLE functions ( 
+	    functions	=> qq(CREATE TABLE functions ( 
 			    assessId		integer			NOT NULL,
 			    sourceFile		text,
 			    class		text,
@@ -712,7 +712,16 @@ sub parse_files
 	$scarf = $names;
     }
 
-    my %callbacks;
+    # Creating the object which will parse the files
+    my $reader;
+    if ($fileName =~ /^.*\.json$/) {
+	$reader = new ScarfJSONReader($scarf);
+	#setUTF8
+	$reader->SetEncoding('UTF-8');
+    } else {
+        $reader = new ScarfXmlReader($scarf);
+	$reader->SetEncoding('UTF-8');
+    }
 
     if ($database ne 'mongodb')  {
 	
@@ -725,38 +734,20 @@ sub parse_files
 		}
 	    }
 	}
-	
-	%callbacks = (
-	    InitialCallback 	=> \&init,
-	    MetricCallback 	=> \&metric,
-	    BugCallback 	=> \&bug,
-	    FinishCallback	=> \&finish,
-	    CallbackData 	=> \%data,
-	);
     }  else  {
-	
 	if ($data{verbose} || $data{insert}) {
 	    $data{assess} = $dbh->get_collection("assess");
 	}
-	%callbacks = (
-	    InitialCallback 	=> \&initMongo,
-	    MetricCallback 	=> \&metricMongo,
-	    BugCallback 	=> \&bugMongo,
-	    FinishCallback	=> \&finish,
-	    CallbackData 	=> \%data,
-	);
-    }
+	$reader->SetInitialCallback(\&initMongo);
+	$reader->SetBugCallback(\&bugMongo);
+	$reader->SetMetricCallback(\&metricMongo);
+	$reader->SetFinalCallback(\&finish);
+	$reader->SetCallbackData(\%data);
+}
     
     # Parsing the file and uploading the data
-    my $test_reader;
-    if ($fileName =~ /^.*\.json$/) {
-        $test_reader = new JSONToHash($scarf, \%callbacks);
-    } else {
-        $test_reader = new ScarfToHash($scarf, \%callbacks);
-    }
-    
-    $test_reader->parse;
-	
+    $reader->Parse();
+
     if (ref($names) eq "HASH") {
 	close $scarf;
     }
@@ -788,7 +779,7 @@ sub init
 	$insert = justPrint('SQL', 'print', $data->{name}, 'assess1', $data->{output}, 
 			    \$data->{count}, \@values);
     }
-    return 0;
+    return;
 }
 
 sub metric
@@ -870,7 +861,7 @@ sub metric
 	    $data->{db_count} = 0;	
 	}
     }
-    return 0;
+    return;
 }
 
 sub bug
@@ -1084,7 +1075,7 @@ sub bug
 	    $data->{db_count} = 0;	
 	}
     }
-    return 0;
+    return;
 }
 
 sub initMongo
@@ -1095,13 +1086,12 @@ sub initMongo
     $data->{toolName} = $details->{tool_name};
     $data->{toolVersion}  = $details->{tool_version};
     $data->{NOSQL} = 'NOSQL';
-    return 0;
+    return;
 }
 
 sub metricMongo
 {
     my ($metric, $data) = @_;
-    
     $data->{bug} = 1;
     my $classname = undef;
     if (exists $metric->{Class})  {
@@ -1143,13 +1133,12 @@ sub metricMongo
 		    \$data->{count}, \%metricInstance);
 	 
     }
-    return 0;
+    return;
 }
 
 sub bugMongo
 {
     my ($bug, $data) = @_;
-    
     my ($assessReportFile, $buildid, $instanceLocation) = (undef, undef, undef);
 
     if (defined $data->{assessReportFile}) {
@@ -1276,13 +1265,12 @@ sub bugMongo
 		    \$data->{count}, \%bugInstance);
 	 
     }
-    return 0;
+    return;
 }
 
 sub finish
 {
-    my ($data) = @_;
-    
+    my ($returnVal, $data) = @_;
     # Adding the closing brakets if MongoDB
     if (defined($data->{verbose}) || defined($data->{justprint})) {
 	if ($data->{name} eq 'mongodb') {
@@ -1318,7 +1306,7 @@ sub finish
 	    }
 	}
     }   
-    return 0;
+    return;
 }
 
 ###################################### Testing the authetication data #######################################
