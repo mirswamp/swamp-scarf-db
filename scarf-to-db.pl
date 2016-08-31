@@ -716,8 +716,6 @@ sub parse_files
     my $reader;
     if ($fileName =~ /^.*\.json$/) {
 	$reader = new ScarfJSONReader($scarf);
-	#setUTF8
-	$reader->SetEncoding('UTF-8');
     } else {
         $reader = new ScarfXmlReader($scarf);
 	$reader->SetEncoding('UTF-8');
@@ -734,6 +732,13 @@ sub parse_files
 		}
 	    }
 	}
+	
+	$reader->SetInitialCallback(\&init);
+	$reader->SetBugCallback(\&bug);
+	$reader->SetMetricCallback(\&metric);
+	$reader->SetFinalCallback(\&finish);
+	$reader->SetCallbackData(\%data);
+    
     }  else  {
 	if ($data{verbose} || $data{insert}) {
 	    $data{assess} = $dbh->get_collection("assess");
@@ -1306,7 +1311,6 @@ sub finish
 	    }
 	}
     }   
-    return;
 }
 
 ###################################### Testing the authetication data #######################################
