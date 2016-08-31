@@ -1,22 +1,22 @@
-== `scarf-to-db User Guide`
-
-**August 12, 2016** +
-**Authors:** __Pranav Mehendiratta, James A. Kupsch__ +
+scarf-to-db User Guide
+======================
+Pranav Mehendiratta <mehendiratta@wisc.edu>; James A. Kupsch <kupsch@wisc.edu>
+v0.8.5, August 31, 2016
+:numbered:
 
 This document describes scarf-to-db a program that uploads SCARF (SWAMP Common Assessment Result Format) results into a NoSQL database (MongoDB) or SQL databases (PostgreSQL, MySQL, MariaDB or SQLite3). Uploading SCARF results into any DBMS involves the following steps:
 
-1.  <<appendix-a, Install the DBMS (see Appendix A)>>
-2.  <<appendix-b, Install Perl drivers (see Appendix B)>>
-3.  <<scarf-to-db-configuration, Configure scarf-to-db>>
-4.  <<database-table-creation-or-deletion-for-sql-databases, Create database tables (for SQL databases)>>
-5.  <<saving-the-scarf-results-into-a-database, Use scarf-to-db to add SCARF results to DBMS>>
+
+.  <<appendix-a, Install the DBMS (see Appendix A)>>
+.  <<appendix-b, Install Perl drivers (see Appendix B)>>
+.  <<scarf-to-db-configuration, Configure scarf-to-db>>
+.  <<database-table-creation-or-deletion-for-sql-databases, Create database tables (for SQL databases)>>
+.  <<saving-the-scarf-results-into-a-database, Use scarf-to-db to add SCARF results to DBMS>>
 
 The rest of this document describes the above steps, the database schemas, and deleting SQL database tables.
 
-:numbered:
-
 [[scarf-to-db-configuration]]
-=== **scarf-to-db configuration**
+=== scarf-to-db configuration
 
 To operate, scarf-to-db requires configuration. The configuration can be set using the command line, or via configuration files. scarf-to-db supports two configuration files: _scarf-to-db.conf_ for database configuration, and _scarf-to-db-auth.conf_ for database credential data (the permissions of this file should be restricted as it contains sensitive information). The use of the configuration files is optional, but recommended.
 
@@ -27,7 +27,7 @@ The location of configuration files can be set from an option before the option 
 The remainder of these sections describes each option and is grouped by the most appropriate place to set the option starting with the scarf-to-db.conf options, then scarf-to-db-auth.conf options, and finally options most appropriately passed as command line options.
 
 [[scarf-to-db.conf]]
-==== **scarf-to-db.conf**
+==== scarf-to-db.conf
 
 The purpose of scarf-to-db.conf file is to configure the database, but other options can also be specified in this file to set their default values. The database related settings that can be configured using this file are as follows:
 
@@ -65,7 +65,7 @@ will be inserted in the database (default: 0)
 |=======================================================================
 
 [[scarf-to-db-auth.conf]]
-==== **scarf-to-db-auth.conf**
+==== scarf-to-db-auth.conf
 
 The purpose of scarf-to-db-auth.conf is to store database credential information if required by DBMS (New installation of MongoDB and SQLite does not require username or password). Since the information stored can compromise security if revealed, the file permission should be set accordingly so that only the owner can read the file. The database authentication related options configured in this file are as follows:
 
@@ -77,13 +77,13 @@ The purpose of scarf-to-db-auth.conf is to store database credential information
 |=======================================================================
 
 [[command-line-options]]
-==== **Command line options**
+==== Command line options
 
 The command line options can be used to specify any of the previous configuration file options, plus options that would be unique to each run of scarf-to-db. Command line options start with `--` and have same name as in the configuration file. Values are specified as `--key=value` or `--key value`. Some of the frequently used options have single letter options which can also be used to specify values using `-single-letter-key value`. The `-single-letter-key` is mentioned with the option itself in the following table. The command line options are as follows:
 
 NOTE: You must specify exactly one of the following options: `--scarf`, `--create-tables` or `--delete-tables`.
 
-[cols="<32%,<68%",options="header",]
+[cols="<28%,<72%",options="header",]
 |=======================================================================
 |Option | Description
 |`--scarf=<path>` or `-s <path>`| Path to the SCARF results XML or JSON
@@ -123,7 +123,7 @@ printing out the the insert statements
 |=======================================================================
 
 [[database-table-creation-or-deletion-for-sql-databases]]
-=== **Database table creation or deletion for SQL databases**
+=== Database table creation or deletion for SQL databases
 
 SQL databases require tables to be created before importing SCARF data. However, MongoDB does not require any tables for storing data. scarf-to-db can be used to create or delete SQL database tables using the following command line options:
 
@@ -137,12 +137,12 @@ SQL databases require tables to be created before importing SCARF data. However,
 NOTE: The schema for the SCARF tables can be found in the section **<<database-schema, Database Schema>>**.
 
 [[saving-the-scarf-results-into-a-database]]
-=== **Saving the SCARF results into a database**
+=== Saving the SCARF results into a database
 
 To save the SCARF results into a database only the `--scarf` command line option is required, besides the database configuration (Assuming you have the DBMS and appropriate perl drivers installed). You can also use `--verbose` or `--just-print` to view the output with or without executing the database statements.
 
 [[example-commands-loading-scarf-into-a-mongodb-database]]
-=== **Example commands loading SCARF into a MongoDB database**
+=== Example commands loading SCARF into a MongoDB database
 
 Configure the `scarf-to-db.conf` and `scarf-to-db-auth.conf` files as mentioned in the previous sections. After configuring those files you should have content similar to the following configuration files:
 
@@ -161,7 +161,7 @@ auth-conf = scarf-to-db-auth.conf
 ....
 
 [[execution-command]]
-==== **Execution command**
+==== Execution command
 
 [source,sh]
 ----
@@ -236,12 +236,12 @@ INSERT INTO cwes VALUES  ('4', '1', null);
 NOTE: The above output can used to manually import data to any of the supported databases.
 
 [[database-schema]]
-=== **Database Schema**
+=== Database Schema
 
 This section will describe the schema of documents and tables for NoSQL and SQL databases respectively.
 
 [[mongodb]]
-==== **MongoDB**
+==== MongoDB
 
 * *BugInstance*
 
@@ -334,7 +334,7 @@ This section will describe the schema of documents and tables for NoSQL and SQL 
 ----
 
 [[schema-sql-databases]]
-==== **Schema (SQL databases)**
+==== Schema (SQL databases)
 
 Below is the schema for SQLite database. All other SQL databases have same schema with few minor changes for primary key. But, the column names and types is same for all SQL databases.
 
@@ -420,13 +420,12 @@ CREATE TABLE metrics (
 );
 ----
 
-:numbered!:
-
 [[appendix-a]]
-=== **Appendix A: Database Installation**
+[appendix]
+=== Database Installation
 
 [[installing-mongodb]]
-==== **Installing MongoDB**
+==== Installing MongoDB
 
 To install MongoDB follow the installation guide at https://docs.mongodb.com/manual/installation/
 
@@ -488,25 +487,27 @@ By default, MongoDB allows any user that can connect to MongoDB to create databa
 Note: If you notice any authentication related error messages and you are sure that password and username entered are correct, please check if the `authenticationDatabase` used for the user is same as the database that you are trying to access
 
 [[installing-postgresql]]
-==== **Installing PostgreSQL**
+==== Installing PostgreSQL
 
 To install PostgreSQL follow the installation guide at https://www.postgresql.org/download/linux/redhat/
 
 [[installing-mysql]]
-==== **Installing MySQL**
+==== Installing MySQL
 
 To install MySQL follow the installation guide at https://dev.mysql.com/doc/mysql-repo-excerpt/5.6/en/linux-installation-yum-repo.html
 
 [[installing-mariadb]]
-==== **Installing MariaDB**
+==== Installing MariaDB
 
 To install MariaDB follow the installation guide at https://mariadb.com/kb/en/mariadb/yum/
 
 [[appendix-b]]
-=== **Appendix B: Perl Drivers Installation**
+[appendix]
+=== Perl Drivers Installation
 
 [[installing-perl-drivers]]
-==== **Installing Perl drivers**
+[upperalpha, start=A]
+==== Installing Perl drivers
 
 
 scarf-to-db program uses Perl drivers. Install the following Perl drivers on the machine that you would want to call scarf-to-db from
