@@ -1,0 +1,2 @@
+git=/p/swamp/gits/swamp-db.git, files=scarf-to-db.pl, README.adoc, scarf-to-db.conf, scarf-to-db-auth.conf
+git=/p/swamp/gits/scarf.git, files=perl/ScarfXmlReader.pm, perlJSON/ScarfJSONReader.pm

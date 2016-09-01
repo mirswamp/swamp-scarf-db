@@ -1,0 +1,55 @@
+= Release Script Guide
+:numbered:
+
+This document describes the working of `release-script.pl` which outputs tar file containing all the appropriate program files, configuration files and documentation files for the program `scarf-to-db`.
+
+=== Configuration
+
+==== Command Line Options
+
+`release-script.pl` has following command line options all of which are *required*.
+
+[cols="<35%,<65%",options="header",]
+|=======================================================================
+|Option | Description 
+|`--release-file=<path> or -r <path>`| Path to file containing name of files and their corresponding git repositories. For format information see <<release-file-option,Release File Format>>
+|`--output=<name> or -o <name>`| Name of the output tar file
+|=======================================================================
+
+
+[[release-file-format]]
+==== Release File Format
+
+The release-files options should get the path to the file which is formatted as follows: 
+----
+git=<path to git repo>, files=<path of file-1 inside repo>, <path of file-2 inside repo>, ...
+----
+
+=== Execution
+
+The following command can be used to create the release tar file:
+
+[source,sh]
+----
+./release-script.pl -r <path to text file> -o <Name of output tar file>
+----
+
+==== Example Execution
+
+`./release-script.pl -r required-files.txt -o scarf-to-db-0.8.5`
+
+The above command outputs tar file with the name *scarf-to-db-0.8.5.tar.gz*. Untarring the above file results in directory with the name *scarf-to-db-0.8.5* with the following structure:
+
+----
+	scarf-to-db-0.8.5/ 
+	    bin/ 
+		    scarf-to-db.pl 
+		    scarf-to-db.conf 
+		    scarf-to-db-auth.conf 
+		    ScarfXmlReader.pm  
+		    ScarfJSONReader.pm 
+	    Readme/ 
+		    README.adoc 
+		    README.html 
+		    README.pdf 
+----

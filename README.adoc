@@ -6,7 +6,6 @@ v0.8.5, August 31, 2016
 
 This document describes scarf-to-db a program that uploads SCARF (SWAMP Common Assessment Result Format) results into a NoSQL database (MongoDB) or SQL databases (PostgreSQL, MySQL, MariaDB or SQLite3). Uploading SCARF results into any DBMS involves the following steps:
 
-
 .  <<appendix-a, Install the DBMS (see Appendix A)>>
 .  <<appendix-b, Install Perl drivers (see Appendix B)>>
 .  <<scarf-to-db-configuration, Configure scarf-to-db>>
