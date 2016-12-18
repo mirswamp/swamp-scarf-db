@@ -1,6 +1,8 @@
 #! /usr/bin/perl -w
 
-#  Copyright 2016 Pranav Mehendiratta
+#  swamp-db
+#
+#  Copyright 2016 Pranav Mehendiratta, James A. Kupsch
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
