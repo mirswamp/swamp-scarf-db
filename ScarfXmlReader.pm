@@ -188,7 +188,10 @@ sub startHandler
 	    } else {
 		$$validStart = 1;
 	    }
-	    $$hash = { tool_name => $atts{tool_name}, tool_version => $atts{tool_version}, uuid => $atts{uuid} };
+	    $$hash = { tool_name => $atts{tool_name}, tool_version => $atts{tool_version}, uuid => $atts{uuid},
+		       package_name => $atts{package_name}, platform_name => $atts{platform_name}, 
+		       package_version => $atts{package_version}, package_root_dir => $atts{package_root_dir},
+		       build_root_dir => $atts{build_root_dir}};
 	    $$ret = $initialcallback->( $$hash, $data );
 	    if ( defined $$ret ) {
 		$parser->finish;

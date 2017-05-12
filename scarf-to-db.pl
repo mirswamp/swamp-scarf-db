@@ -1,8 +1,6 @@
 #! /usr/bin/perl -w
 
-#  swamp-db
-#
-#  Copyright 2016 Pranav Mehendiratta, James A. Kupsch
+#  Copyright 2016 Pranav Mehendiratta
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -40,7 +38,7 @@ sub main
 	($options{db_name}, $options{db_type});
     
     my ($pkg_name, $pkg_ver, $plat) = 
-	($options{pkg_name}, $options{pkg_version}, $options{platform});
+    	($options{pkg_name}, $options{pkg_version}, $options{platform});
    
     # creating a hash for optional options
     my %opt = (
@@ -99,7 +97,6 @@ sub main
 			$options{db_password}, $options{db_commits}, \%names,
 			$options{just_print}, $options{verbose}, $insert,
 			$options{assess_id}, $options{output_file}, \%opt); 
-	
 	} else {
 	    print "Please fix the above errors\n";
 	    exit 1;
@@ -719,7 +716,7 @@ sub parse_files
     if ($fileName =~ /^.*\.json$/) {
 	$reader = new ScarfJSONReader($scarf);
     } else {
-        $reader = new ScarfXmlReader($scarf);
+	$reader = new ScarfXmlReader($$scarf);
 	$reader->SetEncoding('UTF-8');
     }
 
@@ -765,6 +762,18 @@ sub init
 {
     my ($details, $data) = @_;
     $data->{toolName} = $details->{tool_name};
+    
+    # checking if the package_name, platform_name, package_version exists in SCARF file
+    if (defined $details->{package_name}) {
+	$data->{pkgName} = $details->{package_name};
+    }
+    if (defined $details->{platform_name}) {
+	$data->{plat} = $details->{platform_name};
+    }
+    if (defined $details->{package_version}) {
+	$data->{pkgVer} = $details->{package_version};
+    }
+    
     $data->{SQL} = 'SQL';
     my $insert; 
     if ($data->{verbose} || $data->{insert}) {
@@ -780,9 +789,8 @@ sub init
 	$data->{assessId} = $data->{db}->last_insert_id("", "", "assess", "");
 	}
     } else {
-	my @values = ($data->{assessId}, $details->{uuid}, $data->{pkgName}, 
-			$data->{pkgVer}, $details->{tool_name}, $details->{tool_version}, 
-			$data->{plat});
+	my @values = ($data->{assessId}, $details->{uuid}, $data->{pkgName}, $data->{pkgVer}, 
+			$details->{tool_name}, $details->{tool_version}, $data->{plat});
 	$insert = justPrint('SQL', 'print', $data->{name}, 'assess1', $data->{output}, 
 			    \$data->{count}, \@values);
     }
@@ -1092,6 +1100,15 @@ sub initMongo
     $data->{assessUuid} = $details->{uuid};
     $data->{toolName} = $details->{tool_name};
     $data->{toolVersion}  = $details->{tool_version};
+    if (defined $details->{package_name}) {
+	$data->{pkgName} = $details->{package_name};
+    }
+    if (defined $details->{platform_name}) {
+	$data->{plat} = $details->{platform_name};
+    }
+    if (defined $details->{package_version}) {
+	$data->{pkgVer} = $details->{package_version};
+    }
     $data->{NOSQL} = 'NOSQL';
     return;
 }
@@ -1108,6 +1125,10 @@ sub metricMongo
     my $method_name = undef;
     if (exists $metric->{Method})  {
         $method_name = $metric->{Method};
+    }
+
+    if ($metric->{Value} =~ /^[0-9]+$/)  {
+        $metric->{Value} = int($metric->{Value})
     }
 
     my %metricInstance = (  assessUuid   	=> $data->{assessUuid},
@@ -1255,7 +1276,7 @@ sub bugMongo
 			BuildId			=> $buildid,
 			InstanceLocation	=> $instanceLocation,
     );
-    
+ 
     if (defined($data->{verbose}) || defined($data->{insert})) {
         push @{$data->{scarf}}, \%bugInstance;
 	
