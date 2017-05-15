@@ -1,7 +1,7 @@
 scarf-to-db User Guide
 ======================
 Pranav Mehendiratta <mehendiratta@wisc.edu>; James A. Kupsch <kupsch@wisc.edu>
-v0.8.5, August 31, 2016
+v1.0.0, May 15, 2017
 :numbered:
 
 This document describes scarf-to-db a program that uploads SCARF (SWAMP Common Assessment Result Format) results into a NoSQL database (MongoDB) or SQL databases (PostgreSQL, MySQL, MariaDB or SQLite3). Uploading SCARF results into any DBMS involves the following steps:

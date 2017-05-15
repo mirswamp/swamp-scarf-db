@@ -409,7 +409,7 @@ EOF
 #################################### Print version of the program #################################
 sub printVersion
 {
-    my $version = '0.8.5 (August 5, 2016)';
+    my $version = '1.0.0 (May 15, 2017)';
     my $progname = $0;
     print "$progname version $version\n";
 }
